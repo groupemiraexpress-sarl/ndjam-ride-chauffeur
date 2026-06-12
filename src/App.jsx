@@ -123,7 +123,6 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
   const pieceRef = useRef(null);
   const selfieRef = useRef(null);
 
-  // Aperçus (URL signées temporaires car bucket privé)
   useEffect(() => {
     if (!pieceChemin) { setApercuPiece(null); return; }
     (async () => {
@@ -144,10 +143,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
     const fichier = e.target.files?.[0];
     if (!fichier) return;
     setErreur(null);
-    if (fichier.size > 5 * 1024 * 1024) {
-      setErreur("Le fichier est trop lourd (max 5 Mo).");
-      return;
-    }
+    if (fichier.size > 5 * 1024 * 1024) { setErreur("Le fichier est trop lourd (max 5 Mo)."); return; }
     const ext = fichier.name.split(".").pop() || "jpg";
     if (type === "piece") {
       setUploadPiece(true);
@@ -187,7 +183,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
   return (
     <div className="profil-wrap">
       <h2 className="profil-titre">{profilExistant ? "Modifier mon profil" : "Complétez votre profil"}</h2>
-      <p className="profil-sous">Ces informations seront visibles par vos clients.</p>
+      <p className="profil-sous">Documents acceptés : passeport, permis de conduire ou CNI délivrés par le gouvernement. Votre compte sera vérifié avant activation.</p>
       <label className="profil-label">Nom complet</label>
       <input className="accueil-input" value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex : Mahamat Ali" />
       <label className="profil-label">Téléphone</label>
@@ -207,8 +203,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
         ))}
       </div>
 
-      {/* PIÈCE D'IDENTITÉ */}
-      <label className="profil-label">Pièce d'identité (CNI, passeport ou permis)</label>
+      <label className="profil-label">Pièce d'identité (passeport, permis ou CNI)</label>
       <div className="piece-zone">
         {apercuPiece ? (
           <div style={{ textAlign: "center" }}>
@@ -216,9 +211,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
             <div style={{ fontSize: "12px", color: "#16a34a", fontWeight: 700, marginTop: "6px" }}>✓ Pièce déposée</div>
           </div>
         ) : (
-          <div style={{ textAlign: "center", color: "#9ca3af", fontSize: "13px", padding: "20px 0" }}>
-            Aucune pièce déposée
-          </div>
+          <div style={{ textAlign: "center", color: "#9ca3af", fontSize: "13px", padding: "20px 0" }}>Aucune pièce déposée</div>
         )}
         <input ref={pieceRef} type="file" accept="image/*" capture="environment"
           onChange={(e) => televerser(e, "piece")} style={{ display: "none" }} />
@@ -227,7 +220,6 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
         </button>
       </div>
 
-      {/* SELFIE */}
       <label className="profil-label">Votre photo (selfie)</label>
       <div className="piece-zone">
         {apercuSelfie ? (
@@ -236,9 +228,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
             <div style={{ fontSize: "12px", color: "#16a34a", fontWeight: 700, marginTop: "6px" }}>✓ Photo prise</div>
           </div>
         ) : (
-          <div style={{ textAlign: "center", color: "#9ca3af", fontSize: "13px", padding: "20px 0" }}>
-            Aucune photo prise
-          </div>
+          <div style={{ textAlign: "center", color: "#9ca3af", fontSize: "13px", padding: "20px 0" }}>Aucune photo prise</div>
         )}
         <input ref={selfieRef} type="file" accept="image/*" capture="user"
           onChange={(e) => televerser(e, "selfie")} style={{ display: "none" }} />
@@ -259,6 +249,53 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
   );
 }
 
+/* ===================== ÉCRAN STATUT (attente / rejet) ===================== */
+function EcranStatut({ statut, onDeconnexion, onRafraichir }) {
+  const enAttente = statut === "en_attente";
+  return (
+    <div style={{ position: "absolute", top: 62, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f3f4f6", padding: "24px" }}>
+      <div style={{ background: "#fff", borderRadius: "18px", padding: "30px", maxWidth: "380px", width: "100%", textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,.1)" }}>
+        <div style={{ fontSize: "48px", marginBottom: "10px" }}>{enAttente ? "⏳" : "❌"}</div>
+        <h2 style={{ color: enAttente ? "#92400e" : "#991b1b", marginBottom: "12px" }}>
+          {enAttente ? "Vérification en cours" : "Inscription non validée"}
+        </h2>
+        <p style={{ color: "#6b7280", fontSize: "14px", marginBottom: "20px", lineHeight: 1.6 }}>
+          {enAttente
+            ? "Merci pour votre inscription chez NDjam Ride ! Nos équipes examinent actuellement vos documents afin de garantir la sécurité de tous les utilisateurs. Cette vérification prend généralement moins de 24 heures. Dès que votre compte sera validé, vous pourrez commencer à recevoir des courses. Vous pouvez actualiser votre statut à tout moment."
+            : "Votre inscription n'a malheureusement pas pu être validée. Cela peut être dû à des documents illisibles, incomplets ou non conformes — un passeport, un permis de conduire ou une CNI délivrés par le gouvernement sont requis. Nous vous invitons à vérifier vos documents et à contacter notre support pour plus d'informations."}
+        </p>
+        <button onClick={onRafraichir}
+          style={{ width: "100%", border: "none", borderRadius: "11px", background: "#002664", color: "#fff", fontWeight: 700, padding: "13px", cursor: "pointer", marginBottom: "8px" }}>
+          Actualiser mon statut
+        </button>
+        <button onClick={onDeconnexion}
+          style={{ width: "100%", border: "none", borderRadius: "11px", background: "#e5e7eb", color: "#6b7280", fontWeight: 700, padding: "13px", cursor: "pointer" }}>
+          Déconnexion
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ===================== ÉCRAN FÉLICITATIONS ===================== */
+function EcranFelicitations({ nom, onContinuer }) {
+  return (
+    <div style={{ position: "absolute", top: 62, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f3f4f6", padding: "24px" }}>
+      <div style={{ background: "#fff", borderRadius: "18px", padding: "34px 30px", maxWidth: "380px", width: "100%", textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,.1)" }}>
+        <div style={{ fontSize: "56px", marginBottom: "10px" }}>🎉</div>
+        <h2 style={{ color: "#16a34a", marginBottom: "12px" }}>Félicitations, {nom} !</h2>
+        <p style={{ color: "#6b7280", fontSize: "14px", marginBottom: "22px", lineHeight: 1.6 }}>
+          Votre compte chauffeur a été vérifié et approuvé avec succès. Vous faites désormais partie de NDjam Ride et pouvez commencer à recevoir des courses dès maintenant. Bonne route !
+        </p>
+        <button onClick={onContinuer}
+          style={{ width: "100%", border: "none", borderRadius: "11px", background: "#16a34a", color: "#fff", fontWeight: 800, padding: "14px", cursor: "pointer", fontSize: "15px" }}>
+          Commencer à recevoir des courses
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ===================== APP PRINCIPALE ===================== */
 export default function App() {
   const [session, setSession] = useState(null);
@@ -266,6 +303,7 @@ export default function App() {
   const [profil, setProfil] = useState(null);
   const [profilCharge, setProfilCharge] = useState(false);
   const [editionProfil, setEditionProfil] = useState(false);
+  const [montrerFelicitations, setMontrerFelicitations] = useState(false);
 
   const [courses, setCourses] = useState([]);
   const [enLigne, setEnLigne] = useState(true);
@@ -295,27 +333,39 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  async function rechargerProfil() {
+    if (!session) return;
+    const ancienStatut = profilRef.current ? profilRef.current.statut_verif : null;
+    const { data } = await supabase.from("chauffeurs").select("*").eq("user_id", session.user.id).maybeSingle();
+    // Si on vient juste de passer à "approuvé", on affiche les félicitations
+    if (data && data.statut_verif === "approuve" && ancienStatut && ancienStatut !== "approuve") {
+      setMontrerFelicitations(true);
+    }
+    setProfil(data || null);
+    setProfilCharge(true);
+  }
+
   useEffect(() => {
     if (!session) return;
-    (async () => {
-      const { data } = await supabase.from("chauffeurs").select("*").eq("user_id", session.user.id).maybeSingle();
-      setProfil(data || null);
-      setProfilCharge(true);
-    })();
+    rechargerProfil();
   }, [session]);
 
   async function deconnexion() {
     await supabase.auth.signOut();
     setCourseActive(null);
     setCourses([]);
+    setMontrerFelicitations(false);
   }
 
   function profilComplet(p) {
     return p && p.nom && p.telephone && p.plaque && p.vehicule && p.categorie && p.piece_identite_url && p.selfie_url;
   }
+  function estApprouve(p) {
+    return p && p.statut_verif === "approuve";
+  }
 
   useEffect(() => {
-    if (!session || !profilComplet(profil)) return;
+    if (!session || !profilComplet(profil) || !estApprouve(profil)) return;
     chargerCourses();
     const canal = supabase
       .channel("courses-chauffeur")
@@ -436,6 +486,7 @@ export default function App() {
   if (!profilCharge) {
     return <div id="app" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#002664" }}><div style={{ color: "#fff" }}>Chargement du profil...</div></div>;
   }
+
   if (!profilComplet(profil) || editionProfil) {
     return (
       <div id="app">
@@ -448,14 +499,35 @@ export default function App() {
           <MonProfil
             userId={session.user.id}
             profilExistant={profilComplet(profil) ? profil : (profil || null)}
-            onEnregistre={async () => {
-              const { data } = await supabase.from("chauffeurs").select("*").eq("user_id", session.user.id).maybeSingle();
-              setProfil(data);
-              setEditionProfil(false);
-            }}
+            onEnregistre={async () => { await rechargerProfil(); setEditionProfil(false); }}
             onAnnuler={profilComplet(profil) ? () => setEditionProfil(false) : null}
           />
         </div>
+      </div>
+    );
+  }
+
+  if (!estApprouve(profil)) {
+    return (
+      <div id="app">
+        <div id="header">
+          <div id="logo-badge"></div>
+          <h1>NDjam<span> Ride</span><small>Mode Chauffeur</small></h1>
+          <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
+        </div>
+        <EcranStatut statut={profil.statut_verif} onDeconnexion={deconnexion} onRafraichir={rechargerProfil} />
+      </div>
+    );
+  }
+
+  if (montrerFelicitations) {
+    return (
+      <div id="app">
+        <div id="header">
+          <div id="logo-badge"></div>
+          <h1>NDjam<span> Ride</span><small>Mode Chauffeur</small></h1>
+        </div>
+        <EcranFelicitations nom={profil.nom} onContinuer={() => setMontrerFelicitations(false)} />
       </div>
     );
   }
@@ -528,8 +600,8 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ textAlign: "center", fontSize: "12px", color: "#6b7280", margin: "0 0 8px" }}>
-            Vous recevez les courses de catégorie : <b>{maCat}</b>
+          <div style={{ textAlign: "center", fontSize: "12px", color: "#16a34a", margin: "0 0 8px", fontWeight: 700 }}>
+            ✓ Compte vérifié · Catégorie : <b>{maCat}</b>
           </div>
 
           {annuleParClient && (
