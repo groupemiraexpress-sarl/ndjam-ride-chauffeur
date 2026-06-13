@@ -40,8 +40,12 @@ function iconeVoiture() {
 function AjusterVue({ points }) {
   const map = useMap();
   useEffect(() => {
+    // Force Leaflet à recalculer sa taille (corrige l'écran noir sur mobile)
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 400);
     const valides = points.filter(Boolean);
     if (valides.length >= 2) map.fitBounds(valides, { padding: [50, 50] });
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [points, map]);
   return null;
 }
@@ -337,7 +341,6 @@ export default function App() {
     if (!session) return;
     const ancienStatut = profilRef.current ? profilRef.current.statut_verif : null;
     const { data } = await supabase.from("chauffeurs").select("*").eq("user_id", session.user.id).maybeSingle();
-    // Si on vient juste de passer à "approuvé", on affiche les félicitations
     if (data && data.statut_verif === "approuve" && ancienStatut && ancienStatut !== "approuve") {
       setMontrerFelicitations(true);
     }
@@ -476,6 +479,9 @@ export default function App() {
 
   const depart = courseActive ? [courseActive.depart_lat, courseActive.depart_lng] : null;
   const dest = courseActive ? [courseActive.dest_lat, courseActive.dest_lng] : null;
+  const lienNavigation = courseActive
+    ? `https://www.google.com/maps/dir/?api=1&destination=${courseActive.depart_lat},${courseActive.depart_lng}&travelmode=driving`
+    : "#";
 
   if (!authPrete) {
     return <div id="app" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#002664" }}><div style={{ color: "#fff" }}>Chargement...</div></div>;
@@ -569,8 +575,12 @@ export default function App() {
 
             {!showMotifs ? (
               <>
+                <a href={lienNavigation} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", padding: "12px", marginTop: "8px", marginBottom: "8px", borderRadius: "12px", textDecoration: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: "15px" }}>
+                  🧭 Naviguer vers le client
+                </a>
                 <button onClick={() => setChatOuvert(true)}
-                  style={{ width: "100%", padding: "12px", marginTop: "8px", marginBottom: "8px", borderRadius: "12px", border: "none", cursor: "pointer", background: "#002664", color: "#fff", fontWeight: 700, fontSize: "15px" }}>
+                  style={{ width: "100%", padding: "12px", marginBottom: "8px", borderRadius: "12px", border: "none", cursor: "pointer", background: "#002664", color: "#fff", fontWeight: 700, fontSize: "15px" }}>
                   💬 Discussion
                 </button>
                 <button className="btn-terminer" onClick={terminer}>Terminer la course</button>
