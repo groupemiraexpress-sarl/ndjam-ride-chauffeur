@@ -308,6 +308,8 @@ export default function App() {
   const [profilCharge, setProfilCharge] = useState(false);
   const [editionProfil, setEditionProfil] = useState(false);
   const [montrerFelicitations, setMontrerFelicitations] = useState(false);
+  const [codeSaisi, setCodeSaisi] = useState("");
+  const [erreurCode, setErreurCode] = useState(null);
 
   const [courses, setCourses] = useState([]);
   const [enLigne, setEnLigne] = useState(true);
@@ -408,7 +410,18 @@ export default function App() {
         chauffeur_tel: profil.telephone,
       })
       .eq("id", course.id);
-    if (!error) { setCourseActive(course); setAnnuleParClient(null); chargerCourses(); }
+    if (!error) { setCourseActive(course); setAnnuleParClient(null); setCodeSaisi(""); setErreurCode(null); chargerCourses(); }
+  }
+
+  async function demarrerCourse() {
+    setErreurCode(null);
+    if (codeSaisi.trim() !== courseActive.code_demarrage) {
+      setErreurCode("Code incorrect. Demandez le bon code au client.");
+      return;
+    }
+    await supabase.from("courses").update({ demarree: true }).eq("id", courseActive.id);
+    setCourseActive({ ...courseActive, demarree: true });
+    setCodeSaisi("");
   }
 
   async function terminer() {
@@ -583,7 +596,31 @@ export default function App() {
                   style={{ width: "100%", padding: "12px", marginBottom: "8px", borderRadius: "12px", border: "none", cursor: "pointer", background: "#002664", color: "#fff", fontWeight: 700, fontSize: "15px" }}>
                   💬 Discussion
                 </button>
-                <button className="btn-terminer" onClick={terminer}>Terminer la course</button>
+
+                {!courseActive.demarree ? (
+                  <div style={{ background: "#f3f4f6", borderRadius: "12px", padding: "14px", marginBottom: "8px" }}>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#0d1117", marginBottom: "8px", textAlign: "center" }}>
+                      Saisissez le code du client pour démarrer
+                    </div>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={codeSaisi}
+                      onChange={(e) => setCodeSaisi(e.target.value.replace(/\D/g, ""))}
+                      placeholder="• • • •"
+                      style={{ width: "100%", textAlign: "center", fontSize: "28px", fontWeight: 800, letterSpacing: "10px", padding: "10px", borderRadius: "10px", border: "2px solid #d1d5db", outline: "none", marginBottom: "8px" }}
+                    />
+                    {erreurCode && <div style={{ color: "#C60C30", fontSize: "12px", fontWeight: 600, textAlign: "center", marginBottom: "8px" }}>{erreurCode}</div>}
+                    <button onClick={demarrerCourse}
+                      style={{ width: "100%", border: "none", borderRadius: "11px", background: "#16a34a", color: "#fff", fontWeight: 800, padding: "13px", cursor: "pointer", fontSize: "15px" }}>
+                      Démarrer la course
+                    </button>
+                  </div>
+                ) : (
+                  <button className="btn-terminer" onClick={terminer}>Terminer la course</button>
+                )}
+
                 <button className="btn-annuler-ch" onClick={() => setShowMotifs(true)}>Annuler la course</button>
               </>
             ) : (
