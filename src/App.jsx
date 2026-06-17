@@ -40,7 +40,6 @@ function iconeVoiture() {
 function AjusterVue({ points }) {
   const map = useMap();
   useEffect(() => {
-    // Force Leaflet à recalculer sa taille (corrige l'écran noir sur mobile)
     const t1 = setTimeout(() => map.invalidateSize(), 100);
     const t2 = setTimeout(() => map.invalidateSize(), 400);
     const valides = points.filter(Boolean);
@@ -84,7 +83,7 @@ function Accueil() {
     <div className="accueil">
       <div className="accueil-logo">
         <div id="logo-badge" style={{ width: 60, height: 60, borderRadius: 16 }}></div>
-        <h1>NDjam<span>Ride</span></h1>
+        <h1>Mira<span>Express</span></h1>
         <p>Espace Chauffeur</p>
       </div>
       <div className="accueil-carte">
@@ -115,6 +114,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
   const [telephone, setTelephone] = useState(profilExistant?.telephone || "");
   const [plaque, setPlaque] = useState(profilExistant?.plaque || "");
   const [vehicule, setVehicule] = useState(profilExistant?.vehicule || "");
+  const [couleur, setCouleur] = useState(profilExistant?.couleur || "");
   const [categorie, setCategorie] = useState(profilExistant?.categorie || "eco");
   const [pieceChemin, setPieceChemin] = useState(profilExistant?.piece_identite_url || null);
   const [selfieChemin, setSelfieChemin] = useState(profilExistant?.selfie_url || null);
@@ -168,7 +168,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
 
   async function enregistrer() {
     setErreur(null);
-    if (!nom.trim() || !telephone.trim() || !plaque.trim() || !vehicule.trim()) {
+    if (!nom.trim() || !telephone.trim() || !plaque.trim() || !vehicule.trim() || !couleur.trim()) {
       setErreur("Tous les champs sont obligatoires."); return;
     }
     if (!pieceChemin) { setErreur("Veuillez téléverser votre pièce d'identité."); return; }
@@ -176,7 +176,7 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
     setChargement(true);
     const { error } = await supabase.from("chauffeurs").upsert({
       user_id: userId, nom: nom.trim(), telephone: telephone.trim(),
-      plaque: plaque.trim(), vehicule: vehicule.trim(), categorie,
+      plaque: plaque.trim(), vehicule: vehicule.trim(), couleur: couleur.trim(), categorie,
       piece_identite_url: pieceChemin, selfie_url: selfieChemin,
     });
     setChargement(false);
@@ -194,8 +194,10 @@ function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
       <input className="accueil-input" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="Ex : +235 66 12 34 56" />
       <label className="profil-label">Plaque d'immatriculation</label>
       <input className="accueil-input" value={plaque} onChange={(e) => setPlaque(e.target.value)} placeholder="Ex : TD 4271" />
-      <label className="profil-label">Véhicule</label>
-      <input className="accueil-input" value={vehicule} onChange={(e) => setVehicule(e.target.value)} placeholder="Ex : Toyota Corolla · Blanche" />
+      <label className="profil-label">Véhicule (marque et modèle)</label>
+      <input className="accueil-input" value={vehicule} onChange={(e) => setVehicule(e.target.value)} placeholder="Ex : Toyota Corolla" />
+      <label className="profil-label">Couleur du véhicule</label>
+      <input className="accueil-input" value={couleur} onChange={(e) => setCouleur(e.target.value)} placeholder="Ex : Blanche" />
 
       <label className="profil-label">Catégorie de véhicule</label>
       <div className="profil-cats">
@@ -265,7 +267,7 @@ function EcranStatut({ statut, onDeconnexion, onRafraichir }) {
         </h2>
         <p style={{ color: "#6b7280", fontSize: "14px", marginBottom: "20px", lineHeight: 1.6 }}>
           {enAttente
-            ? "Merci pour votre inscription chez NDjam Ride ! Nos équipes examinent actuellement vos documents afin de garantir la sécurité de tous les utilisateurs. Cette vérification prend généralement moins de 24 heures. Dès que votre compte sera validé, vous pourrez commencer à recevoir des courses. Vous pouvez actualiser votre statut à tout moment."
+            ? "Merci pour votre inscription chez Mira Express ! Nos équipes examinent actuellement vos documents afin de garantir la sécurité de tous les utilisateurs. Cette vérification prend généralement moins de 24 heures. Dès que votre compte sera validé, vous pourrez commencer à recevoir des courses. Vous pouvez actualiser votre statut à tout moment."
             : "Votre inscription n'a malheureusement pas pu être validée. Cela peut être dû à des documents illisibles, incomplets ou non conformes — un passeport, un permis de conduire ou une CNI délivrés par le gouvernement sont requis. Nous vous invitons à vérifier vos documents et à contacter notre support pour plus d'informations."}
         </p>
         <button onClick={onRafraichir}
@@ -289,7 +291,7 @@ function EcranFelicitations({ nom, onContinuer }) {
         <div style={{ fontSize: "56px", marginBottom: "10px" }}>🎉</div>
         <h2 style={{ color: "#16a34a", marginBottom: "12px" }}>Félicitations, {nom} !</h2>
         <p style={{ color: "#6b7280", fontSize: "14px", marginBottom: "22px", lineHeight: 1.6 }}>
-          Votre compte chauffeur a été vérifié et approuvé avec succès. Vous faites désormais partie de NDjam Ride et pouvez commencer à recevoir des courses dès maintenant. Bonne route !
+          Votre compte chauffeur a été vérifié et approuvé avec succès. Vous faites désormais partie de Mira Express et pouvez commencer à recevoir des courses dès maintenant. Bonne route !
         </p>
         <button onClick={onContinuer}
           style={{ width: "100%", border: "none", borderRadius: "11px", background: "#16a34a", color: "#fff", fontWeight: 800, padding: "14px", cursor: "pointer", fontSize: "15px" }}>
@@ -363,7 +365,7 @@ export default function App() {
   }
 
   function profilComplet(p) {
-    return p && p.nom && p.telephone && p.plaque && p.vehicule && p.categorie && p.piece_identite_url && p.selfie_url;
+    return p && p.nom && p.telephone && p.plaque && p.vehicule && p.couleur && p.categorie && p.piece_identite_url && p.selfie_url;
   }
   function estApprouve(p) {
     return p && p.statut_verif === "approuve";
@@ -406,7 +408,7 @@ export default function App() {
         statut: "acceptee",
         chauffeur_nom: profil.nom,
         chauffeur_plaque: profil.plaque,
-        chauffeur_vehicule: profil.vehicule,
+        chauffeur_vehicule: profil.vehicule + (profil.couleur ? " · " + profil.couleur : ""),
         chauffeur_tel: profil.telephone,
       })
       .eq("id", course.id);
@@ -511,7 +513,7 @@ export default function App() {
       <div id="app">
         <div id="header">
           <div id="logo-badge"></div>
-          <h1>NDjam<span> Ride</span><small>Mon profil</small></h1>
+          <h1>Mira<span> Express</span><small>Mon profil</small></h1>
           <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
         </div>
         <div style={{ position: "absolute", top: 62, left: 0, right: 0, bottom: 0, overflowY: "auto", background: "#f3f4f6" }}>
@@ -531,7 +533,7 @@ export default function App() {
       <div id="app">
         <div id="header">
           <div id="logo-badge"></div>
-          <h1>NDjam<span> Ride</span><small>Mode Chauffeur</small></h1>
+          <h1>Mira<span> Express</span><small>Mode Chauffeur</small></h1>
           <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
         </div>
         <EcranStatut statut={profil.statut_verif} onDeconnexion={deconnexion} onRafraichir={rechargerProfil} />
@@ -544,7 +546,7 @@ export default function App() {
       <div id="app">
         <div id="header">
           <div id="logo-badge"></div>
-          <h1>NDjam<span> Ride</span><small>Mode Chauffeur</small></h1>
+          <h1>Mira<span> Express</span><small>Mode Chauffeur</small></h1>
         </div>
         <EcranFelicitations nom={profil.nom} onContinuer={() => setMontrerFelicitations(false)} />
       </div>
@@ -557,7 +559,7 @@ export default function App() {
     <div id="app">
       <div id="header">
         <div id="logo-badge"></div>
-        <h1>NDjam<span> Ride</span><small>Mode Chauffeur</small></h1>
+        <h1>Mira<span> Express</span><small>Mode Chauffeur</small></h1>
         <button onClick={() => setEditionProfil(true)} style={{ ...btnDeco, marginLeft: "auto", marginRight: 6 }}>Profil</button>
         <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
       </div>
@@ -639,7 +641,7 @@ export default function App() {
           <div className="statut-bar">
             <div className="statut-info">
               <div className="statut-nom">{profil.nom}</div>
-              <div className="statut-vehicule">{profil.vehicule} · {profil.plaque}</div>
+              <div className="statut-vehicule">{profil.vehicule}{profil.couleur ? " · " + profil.couleur : ""} · {profil.plaque}</div>
             </div>
             <div className={"statut-toggle" + (enLigne ? " on" : "")} onClick={() => setEnLigne(!enLigne)}>
               <div className="toggle-dot"></div>
