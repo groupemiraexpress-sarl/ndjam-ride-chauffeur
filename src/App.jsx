@@ -49,6 +49,21 @@ function AjusterVue({ points }) {
   return null;
 }
 
+// Calcule le vrai trajet par les routes via OSRM (gratuit, OpenStreetMap).
+// Renvoie [[lat,lng],...] ou null si échec.
+async function calculerRoute(a, b) {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson`;
+    const rep = await fetch(url);
+    if (!rep.ok) return null;
+    const data = await rep.json();
+    if (!data.routes || data.routes.length === 0) return null;
+    return data.routes[0].geometry.coordinates.map((c) => [c[1], c[0]]);
+  } catch (e) {
+    return null;
+  }
+}
+
 /* ===================== ÉCRAN D'ACCUEIL / AUTH ===================== */
 function Accueil() {
   const [mode, setMode] = useState("connexion");
@@ -317,6 +332,7 @@ export default function App() {
   const [enLigne, setEnLigne] = useState(true);
   const [courseActive, setCourseActive] = useState(null);
   const [maPosition, setMaPosition] = useState(null);
+  const [routeTrace, setRouteTrace] = useState(null);
   const [gpsErreur, setGpsErreur] = useState(null);
   const [annuleParClient, setAnnuleParClient] = useState(null);
   const [showMotifs, setShowMotifs] = useState(false);
@@ -498,6 +514,20 @@ export default function App() {
     ? `https://www.google.com/maps/dir/?api=1&destination=${courseActive.depart_lat},${courseActive.depart_lng}&travelmode=driving`
     : "#";
 
+  // Trajet par les routes (OSRM) :
+  // - course pas démarrée : ma position -> client (aller le chercher)
+  // - course démarrée : départ client -> destination
+  useEffect(() => {
+    if (!courseActive) { setRouteTrace(null); return; }
+    const demarree = courseActive.demarree;
+    const a = demarree ? depart : maPosition;
+    const b = demarree ? dest : depart;
+    if (!a || !b) { setRouteTrace(null); return; }
+    let annule = false;
+    calculerRoute(a, b).then((pts) => { if (!annule) setRouteTrace(pts); });
+    return () => { annule = true; };
+  }, [courseActive, maPosition]);
+
   if (!authPrete) {
     return <div id="app" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#002664" }}><div style={{ color: "#fff" }}>Chargement...</div></div>;
   }
@@ -572,7 +602,14 @@ export default function App() {
               <Marker position={depart} icon={icone("#002664")} />
               <Marker position={dest} icon={icone("#C60C30")} />
               {maPosition && <Marker position={maPosition} icon={iconeVoiture()} />}
-              <Polyline positions={[depart, dest]} pathOptions={{ color: "#FECB00", weight: 4, dashArray: "2,8" }} />
+              {routeTrace ? (
+                <>
+                  <Polyline positions={routeTrace} pathOptions={{ color: "#fff", weight: 9, opacity: 0.9 }} />
+                  <Polyline positions={routeTrace} pathOptions={{ color: "#16a34a", weight: 5 }} />
+                </>
+              ) : (
+                <Polyline positions={[depart, dest]} pathOptions={{ color: "#FECB00", weight: 4, dashArray: "2,8" }} />
+              )}
               <AjusterVue points={[maPosition, depart, dest]} />
             </MapContainer>
           </div>
