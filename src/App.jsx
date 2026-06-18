@@ -30,11 +30,50 @@ function icone(couleur) {
     iconSize: [30, 40], iconAnchor: [15, 40],
   });
 }
-function iconeVoiture() {
+// Distance à vol d'oiseau entre deux points (km)
+function distanceKm(a, b) {
+  const R = 6371, toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]), dLng = toRad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+// Convertit un nom de couleur (texte libre) en code couleur.
+function couleurVers(nomCouleur) {
+  if (!nomCouleur) return "#002664";
+  const c = nomCouleur.toLowerCase().trim();
+  const table = {
+    "noir": "#1a1a1a", "noire": "#1a1a1a", "black": "#1a1a1a",
+    "blanc": "#e8e8e8", "blanche": "#e8e8e8", "white": "#e8e8e8",
+    "gris": "#7a7a7a", "grise": "#7a7a7a", "gray": "#7a7a7a", "grey": "#7a7a7a", "argent": "#b0b0b0", "argenté": "#b0b0b0",
+    "rouge": "#c0392b", "red": "#c0392b",
+    "bleu": "#2563eb", "bleue": "#2563eb", "blue": "#2563eb",
+    "vert": "#16a34a", "verte": "#16a34a", "green": "#16a34a",
+    "jaune": "#eab308", "yellow": "#eab308",
+    "orange": "#ea580c",
+    "marron": "#92400e", "brun": "#92400e", "brown": "#92400e",
+    "beige": "#d6c9a8",
+    "violet": "#7c3aed", "mauve": "#7c3aed",
+    "or": "#d4af37", "doré": "#d4af37", "dorée": "#d4af37",
+  };
+  for (const mot in table) {
+    if (c.includes(mot)) return table[mot];
+  }
+  return "#002664";
+}
+
+function iconeVoiture(couleur) {
+  const fill = couleur || "#002664";
   return L.divIcon({
     className: "",
-    html: `<div style="background:#16a34a;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);font-size:16px;">🚗</div>`,
-    iconSize: [30, 30], iconAnchor: [15, 15],
+    html: `<svg width="34" height="34" viewBox="0 0 48 48">
+      <rect x="14" y="6" width="20" height="36" rx="7" fill="${fill}" stroke="#fff" stroke-width="1.5"/>
+      <rect x="16" y="13" width="16" height="9" rx="3" fill="#9fc0e8"/>
+      <rect x="16" y="27" width="16" height="8" rx="3" fill="#9fc0e8"/>
+      <rect x="17" y="23" width="14" height="4" rx="2" fill="#FECB00"/>
+      <circle cx="19" cy="9" r="1.4" fill="#fff7cc"/>
+      <circle cx="29" cy="9" r="1.4" fill="#fff7cc"/>
+    </svg>`,
+    iconSize: [34, 34], iconAnchor: [17, 17],
   });
 }
 function AjusterVue({ points }) {
@@ -332,6 +371,7 @@ export default function App() {
   const [enLigne, setEnLigne] = useState(true);
   const [courseActive, setCourseActive] = useState(null);
   const [maPosition, setMaPosition] = useState(null);
+  const [maPositionLive, setMaPositionLive] = useState(null);
   const [routeTrace, setRouteTrace] = useState(null);
   const [gpsErreur, setGpsErreur] = useState(null);
   const [annuleParClient, setAnnuleParClient] = useState(null);
@@ -343,8 +383,10 @@ export default function App() {
   const watchId = useRef(null);
   const courseActiveRef = useRef(null);
   const profilRef = useRef(null);
+  const maPositionLiveRef = useRef(null);
   useEffect(() => { courseActiveRef.current = courseActive; }, [courseActive]);
   useEffect(() => { profilRef.current = profil; }, [profil]);
+  useEffect(() => { maPositionLiveRef.current = maPositionLive; }, [maPositionLive]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -374,6 +416,9 @@ export default function App() {
   }, [session]);
 
   async function deconnexion() {
+    if (session) {
+      await supabase.from("chauffeurs").update({ en_ligne: false, en_course: false }).eq("user_id", session.user.id);
+    }
     await supabase.auth.signOut();
     setCourseActive(null);
     setCourses([]);
@@ -399,22 +444,92 @@ export default function App() {
           if (payload.new.statut === "annulee" && payload.new.annule_par === "client") {
             setAnnuleParClient(payload.new.motif_annulation || "Annulée par le client");
             setCourseActive(null);
+            if (session) supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
           }
         }
       })
       .subscribe();
-    return () => supabase.removeChannel(canal);
+    // BRIQUE 4 : on revérifie toutes les 8 s. Si une cible a expiré (20 s sans réponse),
+    // le chauffeur suivant le plus proche pourra se désigner automatiquement.
+    const minuterie = setInterval(() => { chargerCourses(); }, 8000);
+    return () => { supabase.removeChannel(canal); clearInterval(minuterie); };
   }, [session, profil]);
 
   async function chargerCourses() {
     const p = profilRef.current;
-    if (!p || !p.categorie) return;
+    if (!p || !p.categorie || !session) return;
+    const monId = session.user.id;
+    const pos = maPositionLiveRef.current;
+
+    // 1) Charger les courses en recherche de ma catégorie
     const { data, error } = await supabase
       .from("courses").select("*")
       .eq("statut", "recherche")
       .eq("classe", p.categorie)
       .order("cree_le", { ascending: false });
-    if (!error && data) setCourses(data);
+    if (error || !data) return;
+
+    // 2) Charger les chauffeurs EN LIGNE et DISPONIBLES (pas en course) de ma catégorie
+    const { data: chauffeurs } = await supabase
+      .from("chauffeurs").select("user_id, position_lat, position_lng, en_ligne, en_course, categorie")
+      .eq("categorie", p.categorie)
+      .eq("en_ligne", true);
+    // BRIQUE 5 : on ne garde que les chauffeurs disponibles (pas en course)
+    const enLigneAvecPos = (chauffeurs || []).filter(
+      (c) => c.position_lat != null && c.position_lng != null && !c.en_course
+    );
+
+    const maintenant = Date.now();
+    const DELAI_CIBLE_MS = 20000; // 20 s avant de passer au suivant (Brique 4)
+
+    // 3) Pour chaque course, déterminer si JE dois la voir
+    const visibles = [];
+    for (const c of data) {
+      const refuses = (c.chauffeurs_refuses || "").split(",").filter(Boolean);
+      if (refuses.includes(monId)) continue; // j'ai déjà refusé : je ne la revois pas
+
+      const cibleExpiree = c.cible_depuis && (maintenant - new Date(c.cible_depuis).getTime() > DELAI_CIBLE_MS);
+
+      // a) La course m'est déjà attribuée et la cible n'a pas expiré -> je la vois
+      if (c.chauffeur_cible === monId && !cibleExpiree) {
+        visibles.push(c);
+        continue;
+      }
+
+      // b) La course a une cible (un autre) encore valide -> je ne la vois pas
+      if (c.chauffeur_cible && c.chauffeur_cible !== monId && !cibleExpiree) {
+        continue;
+      }
+
+      // c) Pas de cible, ou cible expirée : on calcule qui est le plus proche
+      //    parmi les chauffeurs en ligne qui n'ont PAS refusé.
+      if (!pos) { continue; }
+      const candidats = enLigneAvecPos.filter((ch) => !refuses.includes(ch.user_id));
+      if (candidats.length === 0) continue;
+      // distance de chaque candidat au départ de la course
+      let plusProche = null, distMin = Infinity;
+      for (const ch of candidats) {
+        const d = distanceKm([ch.position_lat, ch.position_lng], [c.depart_lat, c.depart_lng]);
+        if (d < distMin) { distMin = d; plusProche = ch.user_id; }
+      }
+      // Si JE suis le plus proche, je me désigne comme cible dans la base
+      if (plusProche === monId) {
+        await supabase.from("courses").update({
+          chauffeur_cible: monId,
+          cible_depuis: new Date().toISOString(),
+        }).eq("id", c.id).eq("statut", "recherche");
+        visibles.push({ ...c, chauffeur_cible: monId });
+      }
+    }
+
+    // 4) Calculer la distance et trier pour l'affichage
+    let liste = visibles;
+    if (pos) {
+      liste = visibles
+        .map((c) => ({ ...c, _distChauffeur: distanceKm(pos, [c.depart_lat, c.depart_lng]) }))
+        .sort((a, b) => a._distChauffeur - b._distChauffeur);
+    }
+    setCourses(liste);
   }
 
   async function accepter(course) {
@@ -428,7 +543,28 @@ export default function App() {
         chauffeur_tel: profil.telephone,
       })
       .eq("id", course.id);
-    if (!error) { setCourseActive(course); setAnnuleParClient(null); setCodeSaisi(""); setErreurCode(null); chargerCourses(); }
+    if (!error) {
+      // BRIQUE 5 : se marquer occupé pour ne plus être ciblé par d'autres courses
+      await supabase.from("chauffeurs").update({ en_course: true }).eq("user_id", session.user.id);
+      setCourseActive(course); setAnnuleParClient(null); setCodeSaisi(""); setErreurCode(null); chargerCourses();
+    }
+  }
+
+  // BRIQUE 4 : le chauffeur refuse -> on l'ajoute aux refusés et on libère la cible.
+  // La commande NE s'annule PAS : un autre chauffeur (le suivant le plus proche) sera ciblé.
+  async function refuser(course) {
+    if (!session) return;
+    const monId = session.user.id;
+    const refuses = (course.chauffeurs_refuses || "").split(",").filter(Boolean);
+    if (!refuses.includes(monId)) refuses.push(monId);
+    await supabase.from("courses").update({
+      chauffeur_cible: null,
+      cible_depuis: null,
+      chauffeurs_refuses: refuses.join(","),
+    }).eq("id", course.id).eq("statut", "recherche");
+    // Retirer la course de ma liste tout de suite
+    setCourses((prev) => prev.filter((c) => c.id !== course.id));
+    chargerCourses();
   }
 
   async function demarrerCourse() {
@@ -446,6 +582,8 @@ export default function App() {
     if (courseActive) {
       await supabase.from("courses").update({ statut: "terminee" }).eq("id", courseActive.id);
     }
+    // BRIQUE 5 : redevenir disponible
+    if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
     setCourseActive(null);
     fermerChat();
     chargerCourses();
@@ -456,6 +594,8 @@ export default function App() {
     await supabase.from("courses")
       .update({ statut: "annulee", annule_par: "chauffeur", motif_annulation: motif })
       .eq("id", courseActive.id);
+    // BRIQUE 5 : redevenir disponible
+    if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
     setCourseActive(null);
     setShowMotifs(false);
     fermerChat();
@@ -507,6 +647,44 @@ export default function App() {
     );
     return () => { if (watchId.current !== null) { navigator.geolocation.clearWatch(watchId.current); watchId.current = null; } };
   }, [courseActive]);
+
+  // BRIQUE 1 : quand le chauffeur est EN LIGNE et PAS en course,
+  // il envoie sa position GPS en continu pour être trouvable par les commandes.
+  const watchDispo = useRef(null);
+  useEffect(() => {
+    // On nettoie toute surveillance précédente
+    if (watchDispo.current !== null) {
+      navigator.geolocation.clearWatch(watchDispo.current);
+      watchDispo.current = null;
+    }
+    // Actif seulement si en ligne, approuvé, et pas déjà en course
+    if (!session || !profilComplet(profil) || !estApprouve(profil) || courseActive || !enLigne) {
+      // Marque le chauffeur hors ligne s'il se déconnecte de la dispo
+      if (profil && session && !enLigne) {
+        supabase.from("chauffeurs").update({ en_ligne: false }).eq("user_id", session.user.id);
+      }
+      return;
+    }
+    if (!navigator.geolocation) return;
+    watchDispo.current = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        setMaPositionLive([lat, lng]);
+        await supabase.from("chauffeurs").update({
+          position_lat: lat, position_lng: lng,
+          en_ligne: true, derniere_maj: new Date().toISOString(),
+        }).eq("user_id", session.user.id);
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+    );
+    return () => {
+      if (watchDispo.current !== null) {
+        navigator.geolocation.clearWatch(watchDispo.current);
+        watchDispo.current = null;
+      }
+    };
+  }, [session, profil, courseActive, enLigne]);
 
   const depart = courseActive ? [courseActive.depart_lat, courseActive.depart_lng] : null;
   const dest = courseActive ? [courseActive.dest_lat, courseActive.dest_lng] : null;
@@ -587,7 +765,7 @@ export default function App() {
 
   return (
     <div id="app">
-      <div id="header">
+      <div id="header" style={{ minHeight: "92px", display: "flex", alignItems: "center", position: "absolute", top: 0, left: 0, right: 0, zIndex: 1000, background: "#0d1117" }}>
         <div id="logo-badge"></div>
         <h1>Mira<span> Express</span><small>Mode Chauffeur</small></h1>
         <button onClick={() => setEditionProfil(true)} style={{ ...btnDeco, marginLeft: "auto", marginRight: 6 }}>Profil</button>
@@ -595,13 +773,13 @@ export default function App() {
       </div>
 
       {courseActive ? (
-        <div className="chauffeur-active-wrap">
+        <div className="chauffeur-active-wrap" style={{ position: "absolute", top: "100px", left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column" }}>
           <div className="carte-chauffeur">
             <MapContainer center={maPosition || depart || NDJAMENA} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false}>
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
               <Marker position={depart} icon={icone("#002664")} />
               <Marker position={dest} icon={icone("#C60C30")} />
-              {maPosition && <Marker position={maPosition} icon={iconeVoiture()} />}
+              {maPosition && <Marker position={maPosition} icon={iconeVoiture(couleurVers(profil?.couleur))} />}
               {routeTrace ? (
                 <>
                   <Polyline positions={routeTrace} pathOptions={{ color: "#fff", weight: 9, opacity: 0.9 }} />
@@ -674,14 +852,26 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <div className="chauffeur-body">
-          <div className="statut-bar">
-            <div className="statut-info">
-              <div className="statut-nom">{profil.nom}</div>
-              <div className="statut-vehicule">{profil.vehicule}{profil.couleur ? " · " + profil.couleur : ""} · {profil.plaque}</div>
+        <div className="chauffeur-body" style={{ position: "absolute", top: "100px", left: 0, right: 0, bottom: 0, background: "#f3f4f6", overflowY: "auto", padding: "16px" }}>
+          <div style={{ background: "#fff", borderRadius: "14px", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", boxShadow: "0 2px 8px rgba(0,0,0,.06)" }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "15px", color: "#0d1117" }}>{profil.nom}</div>
+              <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "2px" }}>{profil.vehicule}{profil.couleur ? " · " + profil.couleur : ""} · {profil.plaque}</div>
             </div>
-            <div className={"statut-toggle" + (enLigne ? " on" : "")} onClick={() => setEnLigne(!enLigne)}>
-              <div className="toggle-dot"></div>
+            <div
+              onClick={() => setEnLigne(!enLigne)}
+              style={{
+                display: "flex", alignItems: "center", gap: "8px", cursor: "pointer",
+                padding: "10px 16px", borderRadius: "30px", fontSize: "13px", fontWeight: 800,
+                background: enLigne ? "#dcfce7" : "#fee2e2",
+                color: enLigne ? "#16a34a" : "#C60C30",
+                border: enLigne ? "2px solid #16a34a" : "2px solid #C60C30",
+              }}>
+              <div style={{
+                width: "11px", height: "11px", borderRadius: "50%",
+                background: enLigne ? "#16a34a" : "#C60C30",
+                boxShadow: enLigne ? "0 0 0 3px rgba(22,163,74,.2)" : "0 0 0 3px rgba(198,12,48,.2)",
+              }}></div>
               <span>{enLigne ? "En ligne" : "Hors ligne"}</span>
             </div>
           </div>
@@ -712,6 +902,11 @@ export default function App() {
                   <div className="course-card-prix">{c.prix_fcfa.toLocaleString("fr-FR")} FCFA</div>
                   <div className="course-card-classe">{NOM_CATEGORIE[c.classe] || c.classe}</div>
                 </div>
+                {typeof c._distChauffeur === "number" && (
+                  <div style={{ display: "inline-block", background: "#dcfce7", color: "#16a34a", fontWeight: 800, fontSize: "12px", padding: "5px 12px", borderRadius: "20px", marginBottom: "8px" }}>
+                    📍 Client à ~{c._distChauffeur < 1 ? Math.round(c._distChauffeur * 1000) + " m" : c._distChauffeur.toFixed(1) + " km"} de vous
+                  </div>
+                )}
                 <div className="course-card-detail">
                   {c.distance_km} km · ~{c.duree_min} min · {PAY_NOMS[c.mode_paiement]}
                 </div>
@@ -719,7 +914,13 @@ export default function App() {
                   Départ : {c.depart_lat.toFixed(4)}, {c.depart_lng.toFixed(4)}<br />
                   Arrivée : {c.dest_lat.toFixed(4)}, {c.dest_lng.toFixed(4)}
                 </div>
-                <button className="btn-accepter" onClick={() => accepter(c)}>Accepter la course</button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button className="btn-accepter" style={{ flex: 2 }} onClick={() => accepter(c)}>Accepter</button>
+                  <button onClick={() => refuser(c)}
+                    style={{ flex: 1, border: "1.5px solid #C60C30", borderRadius: "11px", background: "#fff", color: "#C60C30", fontWeight: 700, padding: "13px", cursor: "pointer", fontSize: "15px" }}>
+                    Refuser
+                  </button>
+                </div>
               </div>
             ))
           )}

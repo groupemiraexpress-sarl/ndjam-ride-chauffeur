@@ -193,3 +193,14 @@ body{
   font-size:14px;font-weight:700;padding:12px;cursor:pointer;transition:opacity .2s;
 }
 .piece-btn:disabled{opacity:.6;cursor:not-allowed;}
+
+/* CORRECTION : le header est plus haut que 62px, on décale le contenu */
+#header{
+  min-height:70px;
+}
+.chauffeur-body{
+  top:70px;
+}
+.chauffeur-active-wrap{
+  top:70px;
+}
