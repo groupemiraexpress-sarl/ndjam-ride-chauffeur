@@ -78,11 +78,18 @@ function iconeVoiture(couleur) {
 }
 function AjusterVue({ points }) {
   const map = useMap();
+  const dernierNombre = useRef(0);
   useEffect(() => {
     const t1 = setTimeout(() => map.invalidateSize(), 100);
     const t2 = setTimeout(() => map.invalidateSize(), 400);
     const valides = points.filter(Boolean);
-    if (valides.length >= 2) map.fitBounds(valides, { padding: [50, 50] });
+    // On recadre seulement quand le nombre de points change, pas à chaque mise à jour GPS.
+    if (valides.length >= 2 && valides.length !== dernierNombre.current) {
+      map.fitBounds(valides, { padding: [50, 50] });
+      dernierNombre.current = valides.length;
+    } else if (valides.length < 2) {
+      dernierNombre.current = valides.length;
+    }
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [points, map]);
   return null;
@@ -368,6 +375,13 @@ export default function App() {
   const [erreurCode, setErreurCode] = useState(null);
 
   const [courses, setCourses] = useState([]);
+  const [colis, setColis] = useState([]);
+  const [colisActif, setColisActif] = useState(null);
+  const [colisPhase, setColisPhase] = useState("ramassage"); // ramassage -> livraison
+  const [colisPosition, setColisPosition] = useState(null);
+  const [colisRoute, setColisRoute] = useState(null);
+  const [codeColis, setCodeColis] = useState("");
+  const [erreurCodeColis, setErreurCodeColis] = useState(null);
   const [enLigne, setEnLigne] = useState(true);
   const [courseActive, setCourseActive] = useState(null);
   const [maPosition, setMaPosition] = useState(null);
@@ -384,6 +398,8 @@ export default function App() {
   const courseActiveRef = useRef(null);
   const profilRef = useRef(null);
   const maPositionLiveRef = useRef(null);
+  const colisActifRef = useRef(null);
+  useEffect(() => { colisActifRef.current = colisActif; }, [colisActif]);
   useEffect(() => { courseActiveRef.current = courseActive; }, [courseActive]);
   useEffect(() => { profilRef.current = profil; }, [profil]);
   useEffect(() => { maPositionLiveRef.current = maPositionLive; }, [maPositionLive]);
@@ -406,6 +422,20 @@ export default function App() {
     if (data && data.statut_verif === "approuve" && ancienStatut && ancienStatut !== "approuve") {
       setMontrerFelicitations(true);
     }
+    // Libération auto : si marqué occupé mais aucune course/colis réellement en cours
+    // (cas du rechargement de page), on remet le chauffeur disponible.
+    if (data && data.en_course) {
+      const monId = session.user.id;
+      const { data: coursesEnCours } = await supabase.from("courses")
+        .select("id").eq("chauffeur_nom", data.nom).in("statut", ["acceptee"]).limit(1);
+      const { data: colisEnCours } = await supabase.from("colis")
+        .select("id").eq("chauffeur_nom", data.nom).in("statut", ["acceptee"]).limit(1);
+      const aUneMission = (coursesEnCours && coursesEnCours.length > 0) || (colisEnCours && colisEnCours.length > 0);
+      if (!aUneMission) {
+        await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", monId);
+        data.en_course = false;
+      }
+    }
     setProfil(data || null);
     setProfilCharge(true);
   }
@@ -414,6 +444,13 @@ export default function App() {
     if (!session) return;
     rechargerProfil();
   }, [session]);
+
+  async function seLibererManuellement() {
+    if (!session) return;
+    await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
+    setColisActif(null); setCourseActive(null); setColisPhase("ramassage");
+    chargerCourses(); chargerColis();
+  }
 
   async function deconnexion() {
     if (session) {
@@ -435,6 +472,7 @@ export default function App() {
   useEffect(() => {
     if (!session || !profilComplet(profil) || !estApprouve(profil)) return;
     chargerCourses();
+    chargerColis();
     const canal = supabase
       .channel("courses-chauffeur")
       .on("postgres_changes", { event: "*", schema: "public", table: "courses" }, (payload) => {
@@ -448,10 +486,21 @@ export default function App() {
           }
         }
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "colis" }, (payload) => {
+        chargerColis();
+        // Si le passager a annulé le colis qui est ma mission active
+        const actif = colisActifRef.current;
+        if (actif && payload.new && payload.new.id === actif.id && payload.new.statut === "annulee") {
+          setAnnuleParClient("Le client a annulé le colis.");
+          setColisActif(null);
+          setColisPhase("ramassage");
+          if (session) supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
+        }
+      })
       .subscribe();
     // BRIQUE 4 : on revérifie toutes les 8 s. Si une cible a expiré (20 s sans réponse),
     // le chauffeur suivant le plus proche pourra se désigner automatiquement.
-    const minuterie = setInterval(() => { chargerCourses(); }, 8000);
+    const minuterie = setInterval(() => { chargerCourses(); chargerColis(); }, 8000);
     return () => { supabase.removeChannel(canal); clearInterval(minuterie); };
   }, [session, profil]);
 
@@ -532,6 +581,67 @@ export default function App() {
     setCourses(liste);
   }
 
+  // ÉTAPE B : attribution des colis au chauffeur le plus proche du RAMASSAGE.
+  // Même logique que les courses (briques 1 à 5), mais sur la table colis.
+  // Tous les chauffeurs en ligne peuvent livrer un colis (pas de filtre catégorie).
+  async function chargerColis() {
+    const p = profilRef.current;
+    if (!p || !session) return;
+    const monId = session.user.id;
+    const pos = maPositionLiveRef.current;
+
+    const { data, error } = await supabase
+      .from("colis").select("*")
+      .eq("statut", "recherche")
+      .order("cree_le", { ascending: false });
+    if (error || !data) return;
+
+    // Chauffeurs en ligne et disponibles (tous, peu importe la catégorie)
+    const { data: chauffeurs } = await supabase
+      .from("chauffeurs").select("user_id, position_lat, position_lng, en_ligne, en_course")
+      .eq("en_ligne", true);
+    const enLigneAvecPos = (chauffeurs || []).filter(
+      (c) => c.position_lat != null && c.position_lng != null && !c.en_course
+    );
+
+    const maintenant = Date.now();
+    const DELAI_CIBLE_MS = 20000;
+
+    const visibles = [];
+    for (const c of data) {
+      const refuses = (c.chauffeurs_refuses || "").split(",").filter(Boolean);
+      if (refuses.includes(monId)) continue;
+      const cibleExpiree = c.cible_depuis && (maintenant - new Date(c.cible_depuis).getTime() > DELAI_CIBLE_MS);
+
+      if (c.chauffeur_cible === monId && !cibleExpiree) { visibles.push(c); continue; }
+      if (c.chauffeur_cible && c.chauffeur_cible !== monId && !cibleExpiree) continue;
+
+      if (!pos) continue;
+      const candidats = enLigneAvecPos.filter((ch) => !refuses.includes(ch.user_id));
+      if (candidats.length === 0) continue;
+      let plusProche = null, distMin = Infinity;
+      for (const ch of candidats) {
+        const d = distanceKm([ch.position_lat, ch.position_lng], [c.ramassage_lat, c.ramassage_lng]);
+        if (d < distMin) { distMin = d; plusProche = ch.user_id; }
+      }
+      if (plusProche === monId) {
+        await supabase.from("colis").update({
+          chauffeur_cible: monId,
+          cible_depuis: new Date().toISOString(),
+        }).eq("id", c.id).eq("statut", "recherche");
+        visibles.push({ ...c, chauffeur_cible: monId });
+      }
+    }
+
+    let liste = visibles;
+    if (pos) {
+      liste = visibles
+        .map((c) => ({ ...c, _distChauffeur: distanceKm(pos, [c.ramassage_lat, c.ramassage_lng]) }))
+        .sort((a, b) => a._distChauffeur - b._distChauffeur);
+    }
+    setColis(liste);
+  }
+
   async function accepter(course) {
     const { error } = await supabase
       .from("courses")
@@ -565,6 +675,36 @@ export default function App() {
     // Retirer la course de ma liste tout de suite
     setCourses((prev) => prev.filter((c) => c.id !== course.id));
     chargerCourses();
+  }
+
+  // ÉTAPE B : accepter un colis
+  async function accepterColis(c) {
+    const { error } = await supabase
+      .from("colis")
+      .update({
+        statut: "acceptee",
+        chauffeur_nom: profil.nom,
+        chauffeur_plaque: profil.plaque,
+        chauffeur_tel: profil.telephone,
+      })
+      .eq("id", c.id);
+    if (!error) {
+      await supabase.from("chauffeurs").update({ en_course: true }).eq("user_id", session.user.id);
+      setColisActif(c); chargerColis(); chargerCourses();
+    }
+  }
+
+  // ÉTAPE B : refuser un colis -> passe au suivant le plus proche
+  async function refuserColis(c) {
+    if (!session) return;
+    const monId = session.user.id;
+    const refuses = (c.chauffeurs_refuses || "").split(",").filter(Boolean);
+    if (!refuses.includes(monId)) refuses.push(monId);
+    await supabase.from("colis").update({
+      chauffeur_cible: null, cible_depuis: null, chauffeurs_refuses: refuses.join(","),
+    }).eq("id", c.id).eq("statut", "recherche");
+    setColis((prev) => prev.filter((x) => x.id !== c.id));
+    chargerColis();
   }
 
   async function demarrerCourse() {
@@ -692,6 +832,76 @@ export default function App() {
     ? `https://www.google.com/maps/dir/?api=1&destination=${courseActive.depart_lat},${courseActive.depart_lng}&travelmode=driving`
     : "#";
 
+  // Points du colis actif
+  const colisRamassage = colisActif ? [colisActif.ramassage_lat, colisActif.ramassage_lng] : null;
+  const colisLivraison = colisActif ? [colisActif.livraison_lat, colisActif.livraison_lng] : null;
+
+  // GPS pendant la mission colis : envoyer la position au client
+  const watchColis = useRef(null);
+  useEffect(() => {
+    if (!colisActif) {
+      if (watchColis.current !== null) { navigator.geolocation.clearWatch(watchColis.current); watchColis.current = null; }
+      return;
+    }
+    if (!navigator.geolocation) return;
+    watchColis.current = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        setColisPosition([lat, lng]);
+        await supabase.from("colis").update({ chauffeur_lat: lat, chauffeur_lng: lng }).eq("id", colisActif.id);
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+    );
+    return () => { if (watchColis.current !== null) { navigator.geolocation.clearWatch(watchColis.current); watchColis.current = null; } };
+  }, [colisActif]);
+
+  // Trajet OSRM du colis selon la phase :
+  // - ramassage : ma position -> point A (ramassage)
+  // - livraison : point A -> point B (livraison)
+  useEffect(() => {
+    if (!colisActif) { setColisRoute(null); return; }
+    const a = colisPhase === "ramassage" ? (colisPosition || colisRamassage) : colisRamassage;
+    const b = colisPhase === "ramassage" ? colisRamassage : colisLivraison;
+    if (!a || !b) { setColisRoute(null); return; }
+    let annule = false;
+    calculerRoute(a, b).then((pts) => { if (!annule) setColisRoute(pts); });
+    return () => { annule = true; };
+  }, [colisActif, colisPhase, colisPosition]);
+
+  // Valider le colis livré avec le code du destinataire
+  async function validerLivraisonColis() {
+    setErreurCodeColis(null);
+    if (codeColis.trim() !== colisActif.code_retrait) {
+      setErreurCodeColis("Code incorrect. Demandez le bon code au destinataire.");
+      return;
+    }
+    await supabase.from("colis").update({ statut: "livre", livre: true, recupere: true }).eq("id", colisActif.id);
+    if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
+    setColisActif(null);
+    setColisPhase("ramassage");
+    setCodeColis("");
+    chargerColis();
+    chargerCourses();
+  }
+
+  // Annuler la mission colis
+  async function annulerColis() {
+    if (!colisActif) return;
+    const refuses = (colisActif.chauffeurs_refuses || "").split(",").filter(Boolean);
+    if (session && !refuses.includes(session.user.id)) refuses.push(session.user.id);
+    await supabase.from("colis").update({
+      statut: "recherche", chauffeur_cible: null, cible_depuis: null,
+      chauffeur_nom: null, chauffeur_tel: null, chauffeur_plaque: null,
+      chauffeurs_refuses: refuses.join(","),
+    }).eq("id", colisActif.id);
+    if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
+    setColisActif(null);
+    setColisPhase("ramassage");
+    chargerColis();
+  }
+
+
   // Trajet par les routes (OSRM) :
   // - course pas démarrée : ma position -> client (aller le chercher)
   // - course démarrée : départ client -> destination
@@ -772,7 +982,76 @@ export default function App() {
         <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
       </div>
 
-      {courseActive ? (
+      {colisActif ? (
+        <div className="chauffeur-active-wrap" style={{ position: "absolute", top: "100px", left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column" }}>
+          <div className="carte-chauffeur">
+            <MapContainer center={colisPosition || colisRamassage || NDJAMENA} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false}>
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
+              {colisRamassage && <Marker position={colisRamassage} icon={icone("#002664")} />}
+              {colisLivraison && <Marker position={colisLivraison} icon={icone("#C60C30")} />}
+              {colisPosition && <Marker position={colisPosition} icon={iconeVoiture(couleurVers(profil?.couleur))} />}
+              {colisRoute ? (
+                <>
+                  <Polyline positions={colisRoute} pathOptions={{ color: "#fff", weight: 9, opacity: 0.9 }} />
+                  <Polyline positions={colisRoute} pathOptions={{ color: "#16a34a", weight: 5 }} />
+                </>
+              ) : null}
+              <AjusterVue points={[colisPosition, colisRamassage, colisLivraison]} />
+            </MapContainer>
+          </div>
+          <div className="course-active">
+            <div className="course-active-titre" style={{ color: "#a16207" }}>
+              📦 {colisPhase === "ramassage" ? "Aller chercher le colis" : "Livrer le colis"}
+            </div>
+            <div className="course-active-prix">{(colisActif.prix_fcfa || 0).toLocaleString("fr-FR")} FCFA</div>
+            <div className="course-active-detail">
+              Taille {colisActif.taille} · {colisActif.distance_km} km · {colisActif.mode_livraison === "porte" ? "Porte-à-porte" : "Agence"}
+            </div>
+
+            <div style={{ background: "#f3f4f6", borderRadius: "12px", padding: "12px", marginBottom: "10px", textAlign: "left", fontSize: "13px" }}>
+              <div><b>Ramassage :</b> {colisActif.ramassage_nom || "Point A"}</div>
+              <div><b>Livraison :</b> {colisActif.livraison_nom || "Point B"}</div>
+              {colisActif.description ? <div><b>Contenu :</b> {colisActif.description}</div> : null}
+              <div style={{ marginTop: "6px" }}><b>Destinataire :</b> {colisActif.destinataire_nom}</div>
+              {colisActif.destinataire_tel ? <div><b>Tél :</b> {colisActif.destinataire_tel}</div> : null}
+            </div>
+
+            {colisActif.destinataire_tel && (
+              <a href={"tel:" + colisActif.destinataire_tel}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", padding: "12px", marginBottom: "8px", borderRadius: "12px", textDecoration: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: "15px" }}>
+                📞 Appeler le destinataire
+              </a>
+            )}
+
+            {colisPhase === "ramassage" ? (
+              <button onClick={() => setColisPhase("livraison")}
+                style={{ width: "100%", border: "none", borderRadius: "11px", background: "#002664", color: "#fff", fontWeight: 800, padding: "14px", cursor: "pointer", fontSize: "15px", marginBottom: "8px" }}>
+                ✓ J'ai récupéré le colis
+              </button>
+            ) : (
+              <div style={{ background: "#f3f4f6", borderRadius: "12px", padding: "14px", marginBottom: "8px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "#0d1117", marginBottom: "8px", textAlign: "center" }}>
+                  Saisissez le code du destinataire pour valider la remise
+                </div>
+                <input
+                  type="tel" inputMode="numeric" maxLength={4}
+                  value={codeColis}
+                  onChange={(e) => setCodeColis(e.target.value.replace(/\D/g, ""))}
+                  placeholder="• • • •"
+                  style={{ width: "100%", textAlign: "center", fontSize: "28px", fontWeight: 800, letterSpacing: "10px", padding: "10px", borderRadius: "10px", border: "2px solid #d1d5db", outline: "none", marginBottom: "8px" }}
+                />
+                {erreurCodeColis && <div style={{ color: "#C60C30", fontSize: "12px", fontWeight: 600, textAlign: "center", marginBottom: "8px" }}>{erreurCodeColis}</div>}
+                <button onClick={validerLivraisonColis}
+                  style={{ width: "100%", border: "none", borderRadius: "11px", background: "#16a34a", color: "#fff", fontWeight: 800, padding: "13px", cursor: "pointer", fontSize: "15px" }}>
+                  Valider la livraison
+                </button>
+              </div>
+            )}
+
+            <button onClick={annulerColis} className="btn-annuler-ch">Annuler la mission</button>
+          </div>
+        </div>
+      ) : courseActive ? (
         <div className="chauffeur-active-wrap" style={{ position: "absolute", top: "100px", left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column" }}>
           <div className="carte-chauffeur">
             <MapContainer center={maPosition || depart || NDJAMENA} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false}>
@@ -880,6 +1159,18 @@ export default function App() {
             ✓ Compte vérifié · Catégorie : <b>{maCat}</b>
           </div>
 
+          {profil.en_course && (
+            <div style={{ background: "#fef9c3", border: "1.5px solid #eab308", borderRadius: "12px", padding: "12px", marginBottom: "12px", textAlign: "center" }}>
+              <div style={{ fontSize: "13px", color: "#a16207", fontWeight: 600, marginBottom: "8px" }}>
+                Vous êtes marqué « occupé » mais n'avez aucune mission en cours.
+              </div>
+              <button onClick={seLibererManuellement}
+                style={{ width: "100%", border: "none", borderRadius: "10px", background: "#16a34a", color: "#fff", fontWeight: 700, padding: "11px", cursor: "pointer", fontSize: "14px" }}>
+                Me remettre disponible
+              </button>
+            </div>
+          )}
+
           {annuleParClient && (
             <div className="annul-client">
               <b>⚠️ Le client a annulé la course</b>
@@ -923,6 +1214,43 @@ export default function App() {
                 </div>
               </div>
             ))
+          )}
+
+          {/* ÉTAPE B : demandes de COLIS à livrer */}
+          {enLigne && colis.length > 0 && (
+            <>
+              <div className="liste-titre" style={{ marginTop: "20px" }}>
+                📦 Colis à livrer ({colis.length})
+              </div>
+              {colis.map((c) => (
+                <div key={c.id} className="course-card" style={{ borderLeftColor: "#FECB00" }}>
+                  <div className="course-card-haut">
+                    <div className="course-card-prix">{(c.prix_fcfa || 0).toLocaleString("fr-FR")} FCFA</div>
+                    <div className="course-card-classe" style={{ background: "#FECB00", color: "#002664" }}>📦 Colis</div>
+                  </div>
+                  {typeof c._distChauffeur === "number" && (
+                    <div style={{ display: "inline-block", background: "#fef9c3", color: "#a16207", fontWeight: 800, fontSize: "12px", padding: "5px 12px", borderRadius: "20px", marginBottom: "8px" }}>
+                      📍 Ramassage à ~{c._distChauffeur < 1 ? Math.round(c._distChauffeur * 1000) + " m" : c._distChauffeur.toFixed(1) + " km"} de vous
+                    </div>
+                  )}
+                  <div className="course-card-detail">
+                    Taille : {c.taille} · {c.distance_km} km · {c.mode_livraison === "porte" ? "Porte-à-porte" : "Agence"} · {PAY_NOMS[c.mode_paiement]}
+                  </div>
+                  <div className="course-card-coords">
+                    Ramassage : {c.ramassage_nom || `${c.ramassage_lat?.toFixed(4)}, ${c.ramassage_lng?.toFixed(4)}`}<br />
+                    Livraison : {c.livraison_nom || `${c.livraison_lat?.toFixed(4)}, ${c.livraison_lng?.toFixed(4)}`}
+                    {c.description ? <><br />Contenu : {c.description}</> : null}
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button className="btn-accepter" style={{ flex: 2 }} onClick={() => accepterColis(c)}>Accepter le colis</button>
+                    <button onClick={() => refuserColis(c)}
+                      style={{ flex: 1, border: "1.5px solid #C60C30", borderRadius: "11px", background: "#fff", color: "#C60C30", fontWeight: 700, padding: "13px", cursor: "pointer", fontSize: "15px" }}>
+                      Refuser
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}
