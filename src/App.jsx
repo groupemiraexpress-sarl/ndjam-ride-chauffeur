@@ -510,7 +510,13 @@ export default function App() {
     const monId = session.user.id;
     const pos = maPositionLiveRef.current;
 
-    // 1) Charger les courses en recherche de ma catégorie
+    // Expirer les courses trop vieilles (plus de 5 min en recherche) — fait côté Supabase
+    const ilYa5min = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    await supabase.from("courses").update({ statut: "expiree" })
+      .eq("statut", "recherche").lt("cree_le", ilYa5min);
+
+    // 1) Charger les courses encore en recherche de ma catégorie
+    // (les vieilles ont déjà été expirées ci-dessus, donc pas de filtre d'horloge local)
     const { data, error } = await supabase
       .from("courses").select("*")
       .eq("statut", "recherche")
@@ -589,6 +595,11 @@ export default function App() {
     if (!p || !session) return;
     const monId = session.user.id;
     const pos = maPositionLiveRef.current;
+
+    // Expirer les colis trop vieux (plus de 5 min en recherche) — fait côté Supabase
+    const ilYa5minC = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    await supabase.from("colis").update({ statut: "expiree" })
+      .eq("statut", "recherche").lt("cree_le", ilYa5minC);
 
     const { data, error } = await supabase
       .from("colis").select("*")
