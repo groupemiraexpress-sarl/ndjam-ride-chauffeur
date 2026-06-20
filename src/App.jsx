@@ -508,7 +508,8 @@ export default function App() {
     const p = profilRef.current;
     if (!p || !p.categorie || !session) return;
     const monId = session.user.id;
-    const pos = maPositionLiveRef.current;
+    // Position : on prend le GPS live, sinon la position enregistrée dans le profil (secours mobile)
+    const pos = maPositionLiveRef.current || (p.position_lat != null ? [p.position_lat, p.position_lng] : null);
 
     // Expirer les courses trop vieilles (plus de 5 min en recherche) — fait côté Supabase
     const ilYa5min = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -594,7 +595,8 @@ export default function App() {
     const p = profilRef.current;
     if (!p || !session) return;
     const monId = session.user.id;
-    const pos = maPositionLiveRef.current;
+    // Position : GPS live, sinon position du profil Supabase (secours mobile)
+    const pos = maPositionLiveRef.current || (p.position_lat != null ? [p.position_lat, p.position_lng] : null);
 
     // Expirer les colis trop vieux (plus de 5 min en recherche) — fait côté Supabase
     const ilYa5minC = new Date(Date.now() - 15 * 60 * 1000).toISOString();
