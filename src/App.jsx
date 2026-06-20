@@ -468,6 +468,9 @@ export default function App() {
   function estApprouve(p) {
     return p && p.statut_verif === "approuve";
   }
+  function compteBloque(p) {
+    return p && (p.statut_compte === "suspendu" || p.statut_compte === "bloque");
+  }
 
   useEffect(() => {
     if (!session || !profilComplet(profil) || !estApprouve(profil)) return;
@@ -811,7 +814,7 @@ export default function App() {
       watchDispo.current = null;
     }
     // Actif seulement si en ligne, approuvé, et pas déjà en course
-    if (!session || !profilComplet(profil) || !estApprouve(profil) || courseActive || !enLigne) {
+    if (!session || !profilComplet(profil) || !estApprouve(profil) || compteBloque(profil) || courseActive || !enLigne) {
       // Marque le chauffeur hors ligne s'il se déconnecte de la dispo
       if (profil && session && !enLigne) {
         supabase.from("chauffeurs").update({ en_ligne: false }).eq("user_id", session.user.id);
@@ -972,6 +975,39 @@ export default function App() {
     );
   }
 
+  if (compteBloque(profil)) {
+    const suspendu = profil.statut_compte === "suspendu";
+    return (
+      <div id="app">
+        <div id="header">
+          <div id="logo-badge"></div>
+          <h1>Mira<span> Express</span><small>Mode Chauffeur</small></h1>
+          <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
+        </div>
+        <div style={{ position: "absolute", top: 62, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f3f4f6", padding: "24px" }}>
+          <div style={{ background: "#fff", borderRadius: "18px", padding: "30px", maxWidth: "380px", width: "100%", textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,.1)" }}>
+            <div style={{ fontSize: "48px", marginBottom: "10px" }}>{suspendu ? "⏸" : "⛔"}</div>
+            <h2 style={{ color: suspendu ? "#9a3412" : "#991b1b", marginBottom: "12px" }}>
+              {suspendu ? "Compte suspendu" : "Compte bloqué"}
+            </h2>
+            <p style={{ color: "#6b7280", fontSize: "14px", marginBottom: "20px", lineHeight: 1.6 }}>
+              {suspendu
+                ? "Votre compte est temporairement suspendu. Vous ne pouvez pas recevoir de courses pour le moment. Contactez le support Mira Express pour régulariser votre situation."
+                : "Votre compte a été bloqué et ne peut plus recevoir de courses. Pour toute question, contactez le support Mira Express."}
+            </p>
+            <button onClick={rechargerProfil}
+              style={{ width: "100%", border: "none", borderRadius: "11px", background: "#002664", color: "#fff", fontWeight: 700, padding: "13px", cursor: "pointer", marginBottom: "8px" }}>
+              Actualiser mon statut
+            </button>
+            <button onClick={deconnexion}
+              style={{ width: "100%", border: "none", borderRadius: "11px", background: "#e5e7eb", color: "#6b7280", fontWeight: 700, padding: "13px", cursor: "pointer" }}>
+              Déconnexion
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (montrerFelicitations) {
     return (
       <div id="app">
