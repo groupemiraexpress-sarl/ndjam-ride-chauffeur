@@ -500,7 +500,7 @@ export default function App() {
       .subscribe();
     // BRIQUE 4 : on revérifie toutes les 8 s. Si une cible a expiré (20 s sans réponse),
     // le chauffeur suivant le plus proche pourra se désigner automatiquement.
-    const minuterie = setInterval(() => { chargerCourses(); chargerColis(); }, 8000);
+    const minuterie = setInterval(() => { chargerCourses(); chargerColis(); }, 3000);
     return () => { supabase.removeChannel(canal); clearInterval(minuterie); };
   }, [session, profil]);
 
@@ -536,7 +536,7 @@ export default function App() {
     );
 
     const maintenant = Date.now();
-    const DELAI_CIBLE_MS = 20000; // 20 s avant de passer au suivant (Brique 4)
+    const DELAI_CIBLE_MS = 12000; // 12 s avant de passer au suivant (Brique 4)
 
     // 3) Pour chaque course, déterminer si JE dois la voir
     const visibles = [];
@@ -618,7 +618,7 @@ export default function App() {
     );
 
     const maintenant = Date.now();
-    const DELAI_CIBLE_MS = 20000;
+    const DELAI_CIBLE_MS = 12000;
 
     const visibles = [];
     for (const c of data) {
