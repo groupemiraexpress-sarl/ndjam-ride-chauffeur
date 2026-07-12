@@ -112,6 +112,7 @@ async function calculerRoute(a, b) {
 
 /* ===================== ÉCRAN D'ACCUEIL / AUTH ===================== */
 function Accueil() {
+  // mode : "connexion" | "inscription" | "oubli"
   const [mode, setMode] = useState("connexion");
   const [email, setEmail] = useState("");
   const [mdp, setMdp] = useState("");
@@ -123,8 +124,12 @@ function Accueil() {
     if (msg.includes("Invalid login")) return "Email ou mot de passe incorrect.";
     if (msg.includes("already registered")) return "Cet email a déjà un compte. Connectez-vous.";
     if (msg.includes("at least 6")) return "Le mot de passe doit faire au moins 6 caractères.";
+    if (msg.includes("rate limit") || msg.includes("Email rate")) {
+      return "Trop de demandes. Patientez quelques minutes avant de réessayer.";
+    }
     return msg;
   }
+
   async function soumettre() {
     setErreur(null); setInfo(null);
     if (!email.trim() || !mdp.trim()) { setErreur("Email et mot de passe requis."); return; }
@@ -140,10 +145,61 @@ function Accueil() {
     setChargement(false);
   }
 
+  // Envoie l'email de réinitialisation du mot de passe.
+  async function envoyerLienReinit() {
+    setErreur(null); setInfo(null);
+    if (!email.trim()) { setErreur("Entrez votre adresse email."); return; }
+    setChargement(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+    setChargement(false);
+    if (error) { setErreur(traduireErreur(error.message)); return; }
+    setInfo("Email envoyé ! Consultez votre boîte de réception (pensez aux spams) et cliquez sur le lien pour choisir un nouveau mot de passe.");
+  }
+
+  /* ---------- ÉCRAN : MOT DE PASSE OUBLIÉ ---------- */
+  if (mode === "oubli") {
+    return (
+      <div className="accueil">
+        <div className="accueil-logo">
+          <div id="logo-badge" style={{ width: 60, height: 60, borderRadius: "50%" }}></div>
+          <h1>Mira<span>Express</span></h1>
+          <p>Espace Chauffeur</p>
+        </div>
+        <div className="accueil-carte">
+          <h2 className="oubli-titre">Mot de passe oublié</h2>
+          <p className="oubli-txt">
+            Entrez l'adresse email de votre compte. Nous vous enverrons un lien
+            pour choisir un nouveau mot de passe.
+          </p>
+
+          <input type="email" placeholder="Adresse email" value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") envoyerLienReinit(); }}
+            className="accueil-input" />
+
+          {erreur && <div className="accueil-erreur">{erreur}</div>}
+          {info && <div className="accueil-info">{info}</div>}
+
+          <button className="accueil-btn" onClick={envoyerLienReinit} disabled={chargement}>
+            {chargement ? "Envoi en cours..." : "Envoyer le lien"}
+          </button>
+
+          <div className="oubli-lien"
+            onClick={() => { setMode("connexion"); setErreur(null); setInfo(null); }}>
+            ← Retour à la connexion
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---------- ÉCRAN : CONNEXION / INSCRIPTION ---------- */
   return (
     <div className="accueil">
       <div className="accueil-logo">
-        <div id="logo-badge" style={{ width: 60, height: 60, borderRadius: 16 }}></div>
+        <div id="logo-badge" style={{ width: 60, height: 60, borderRadius: "50%" }}></div>
         <h1>Mira<span>Express</span></h1>
         <p>Espace Chauffeur</p>
       </div>
@@ -159,15 +215,93 @@ function Accueil() {
         <input type="password" placeholder="Mot de passe" value={mdp}
           onChange={(e) => setMdp(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") soumettre(); }} className="accueil-input" />
+
         {erreur && <div className="accueil-erreur">{erreur}</div>}
         {info && <div className="accueil-info">{info}</div>}
+
         <button className="accueil-btn" onClick={soumettre} disabled={chargement}>
           {chargement ? "Patientez..." : mode === "connexion" ? "Se connecter" : "Créer mon compte"}
+        </button>
+
+        {/* Lien mot de passe oublié : sous le bouton, en mode connexion seulement */}
+        {mode === "connexion" && (
+          <div className="oubli-lien"
+            onClick={() => { setMode("oubli"); setErreur(null); setInfo(null); setMdp(""); }}>
+            Mot de passe oublié ?
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ===================== ÉCRAN NOUVEAU MOT DE PASSE ===================== */
+function NouveauMotDePasse({ onTermine }) {
+  const [mdp, setMdp] = useState("");
+  const [mdp2, setMdp2] = useState("");
+  const [chargement, setChargement] = useState(false);
+  const [erreur, setErreur] = useState(null);
+  const [succes, setSucces] = useState(false);
+
+  async function enregistrer() {
+    setErreur(null);
+    if (mdp.length < 6) { setErreur("Le mot de passe doit faire au moins 6 caractères."); return; }
+    if (mdp !== mdp2) { setErreur("Les deux mots de passe ne sont pas identiques."); return; }
+    setChargement(true);
+    const { error } = await supabase.auth.updateUser({ password: mdp });
+    setChargement(false);
+    if (error) { setErreur(error.message); return; }
+    setSucces(true);
+  }
+
+  if (succes) {
+    return (
+      <div className="accueil">
+        <div className="accueil-logo">
+          <div id="logo-badge" style={{ width: 60, height: 60, borderRadius: "50%" }}></div>
+          <h1>Mira<span>Express</span></h1>
+        </div>
+        <div className="accueil-carte" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "48px", marginBottom: "10px" }}>✅</div>
+          <h2 className="oubli-titre" style={{ color: "#16a34a" }}>Mot de passe modifié</h2>
+          <p className="oubli-txt">
+            Votre nouveau mot de passe a bien été enregistré.
+            Vous pouvez maintenant utiliser l'application.
+          </p>
+          <button className="accueil-btn" onClick={onTermine}>Continuer</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="accueil">
+      <div className="accueil-logo">
+        <div id="logo-badge" style={{ width: 60, height: 60, borderRadius: "50%" }}></div>
+        <h1>Mira<span>Express</span></h1>
+        <p>Espace Chauffeur</p>
+      </div>
+      <div className="accueil-carte">
+        <h2 className="oubli-titre">Nouveau mot de passe</h2>
+        <p className="oubli-txt">Choisissez un nouveau mot de passe pour votre compte.</p>
+
+        <input type="password" placeholder="Nouveau mot de passe" value={mdp}
+          onChange={(e) => setMdp(e.target.value)} className="accueil-input" />
+        <input type="password" placeholder="Confirmez le mot de passe" value={mdp2}
+          onChange={(e) => setMdp2(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") enregistrer(); }}
+          className="accueil-input" />
+
+        {erreur && <div className="accueil-erreur">{erreur}</div>}
+
+        <button className="accueil-btn" onClick={enregistrer} disabled={chargement}>
+          {chargement ? "Enregistrement..." : "Enregistrer le mot de passe"}
         </button>
       </div>
     </div>
   );
 }
+
 
 /* ===================== PAGE MON PROFIL ===================== */
 function MonProfil({ userId, profilExistant, onEnregistre, onAnnuler }) {
@@ -373,6 +507,7 @@ export default function App() {
   const [montrerFelicitations, setMontrerFelicitations] = useState(false);
   const [codeSaisi, setCodeSaisi] = useState("");
   const [erreurCode, setErreurCode] = useState(null);
+  const [modeRecuperation, setModeRecuperation] = useState(false);
 
   const [courses, setCourses] = useState([]);
   const [colis, setColis] = useState([]);
@@ -411,6 +546,13 @@ export default function App() {
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => {
       setSession(sess); setProfilCharge(false); setProfil(null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+  // Détecte le retour depuis l'email de réinitialisation du mot de passe.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((evenement) => {
+      if (evenement === "PASSWORD_RECOVERY") setModeRecuperation(true);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -934,6 +1076,9 @@ export default function App() {
 
   if (!authPrete) {
     return <div id="app" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#002664" }}><div style={{ color: "#fff" }}>Chargement...</div></div>;
+  }
+  if (modeRecuperation) {
+    return <div id="app"><NouveauMotDePasse onTermine={() => setModeRecuperation(false)} /></div>;
   }
   if (!session) {
     return <div id="app"><Accueil /></div>;

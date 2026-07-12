@@ -203,3 +203,30 @@ body{
   font-size:14px;font-weight:700;padding:12px;cursor:pointer;transition:opacity .2s;
 }
 .piece-btn:disabled{opacity:.6;cursor:not-allowed;}
+
+/* ===================== MOT DE PASSE OUBLIÉ ===================== */
+.oubli-lien {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #002664;
+  cursor: pointer;
+  margin: 14px 0 0;
+}
+.oubli-lien:hover {
+  text-decoration: underline;
+}
+.oubli-titre {
+  font-size: 20px;
+  font-weight: 800;
+  color: #002664;
+  margin-bottom: 8px;
+  text-align: center;
+}
+.oubli-txt {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.6;
+  margin-bottom: 18px;
+  text-align: center;
+}
