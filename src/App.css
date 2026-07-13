@@ -106,6 +106,7 @@ body{
   overflow-y:auto;
   background:var(--blanc);border-radius:20px 20px 0 0;padding:20px;text-align:center;
   box-shadow:0 -4px 16px rgba(0,0,0,.1);
+  padding-bottom:calc(20px + env(safe-area-inset-bottom));
 }
 .course-active-titre{font-size:15px;font-weight:700;color:var(--vert);margin-bottom:8px;}
 .course-active-prix{font-size:30px;font-weight:800;color:var(--bleu);}
@@ -281,4 +282,16 @@ body{
 }
 .hist-note-client {
   font-size: 12px; color: #f59e0b; margin-top: 5px; font-weight: 600;
+}
+
+/* ===================== ZONES SÛRES (encoche / barre d'état) =====================
+   Une fois l'app installée en PWA (écran d'accueil), elle occupe tout l'écran, y
+   compris sous l'encoche/la barre d'état du téléphone. On repousse le contenu du
+   haut avec l'espace réel que le téléphone réserve (0 sur les appareils sans
+   encoche, donc aucun effet sur les anciens modèles ou sur Android classique). */
+#header{
+  padding-top: calc(14px + env(safe-area-inset-top));
+}
+.chauffeur-body{
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
 }
