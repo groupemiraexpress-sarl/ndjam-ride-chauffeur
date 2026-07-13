@@ -1271,8 +1271,7 @@ export default function App() {
         <div id="header">
           <div id="logo-badge"></div>
           <h1>Mira<span> Express</span><small>Mon profil</small></h1>
-          <button onClick={() => setVoirHistorique(true)} style={btnProfil}>📋 Mes courses</button>
-        <button onClick={() => setPageProfil(true)} style={btnProfil}>Profil</button>
+          <button onClick={deconnexion} style={{ ...btnDeco, marginLeft: "auto" }}>Déconnexion</button>
         </div>
         <div style={{ position: "absolute", top: 62, left: 0, right: 0, bottom: 0, overflowY: "auto", background: "#f3f4f6" }}>
           <MonProfil
@@ -1351,11 +1350,16 @@ export default function App() {
       <div id="header" style={{ minHeight: "92px", display: "flex", alignItems: "center", position: "absolute", top: 0, left: 0, right: 0, zIndex: 1000, background: "#0d1117" }}>
         <div id="logo-badge"></div>
         <h1>Mira<span> Express</span><small>Mode Chauffeur</small></h1>
-        <button onClick={() => setEditionProfil(true)} style={{ ...btnDeco, marginLeft: "auto", marginRight: 6 }}>Profil</button>
+        <button onClick={() => setVoirHistorique(true)} style={{ ...btnDeco, marginLeft: "auto", marginRight: 6 }}>📋 Mes courses</button>
+        <button onClick={() => setEditionProfil(true)} style={{ ...btnDeco, marginRight: 6 }}>Profil</button>
         <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
       </div>
 
-      {colisActif ? (
+      {voirHistorique ? (
+        <div style={{ position: "absolute", top: "92px", left: 0, right: 0, bottom: 0, overflowY: "auto", background: "#f3f4f6" }}>
+          <MesCourses profil={profil} onRetour={() => setVoirHistorique(false)} />
+        </div>
+      ) : colisActif ? (
         <div className="chauffeur-active-wrap" style={{ position: "absolute", top: "100px", left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column" }}>
           <div className="carte-chauffeur">
             <MapContainer center={colisPosition || colisRamassage || NDJAMENA} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false}>
