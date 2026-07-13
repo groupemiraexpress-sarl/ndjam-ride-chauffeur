@@ -1482,6 +1482,7 @@ export default function App() {
             <div className="course-active-prix">{courseActive.prix_fcfa.toLocaleString("fr-FR")} FCFA</div>
             <div className="course-active-detail">
               {NOM_CATEGORIE[courseActive.classe] || courseActive.classe} · {courseActive.distance_km} km · {PAY_NOMS[courseActive.mode_paiement]}
+              {courseActive.bagages ? " · 🧳 Bagages" : ""}
             </div>
             {gpsErreur
               ? <div className="gps-statut err">📍 {gpsErreur}</div>
@@ -1620,6 +1621,11 @@ export default function App() {
                 <div className="course-card-detail">
                   {c.distance_km} km · ~{c.duree_min} min · {PAY_NOMS[c.mode_paiement]}
                 </div>
+                {c.bagages && (
+                  <div style={{ display: "inline-block", background: "#fef3c7", color: "#92400e", fontWeight: 800, fontSize: "12px", padding: "5px 12px", borderRadius: "20px", marginBottom: "8px" }}>
+                    🧳 Client avec bagages
+                  </div>
+                )}
                 <div className="course-card-coords">
                   Départ : {c.depart_lat.toFixed(4)}, {c.depart_lng.toFixed(4)}<br />
                   Arrivée : {c.dest_lat.toFixed(4)}, {c.dest_lng.toFixed(4)}
@@ -1675,7 +1681,7 @@ export default function App() {
       )}
 
       {chatOuvert && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#fff", display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "absolute", inset: 0, zIndex: 1000, background: "#fff", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", borderBottom: "1px solid #e5e7eb", background: "#002664", color: "#fff" }}>
             <button onClick={() => window.history.back()} style={{ background: "none", border: "none", color: "#fff", fontSize: "22px", cursor: "pointer" }}>←</button>
             <div>
@@ -1722,7 +1728,7 @@ export default function App() {
       )}
 
       {menuOuvert && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "#fff", display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "absolute", inset: 0, zIndex: 1200, background: "#fff", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: "#0d1117", color: "#fff" }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: "15px" }}>{profil?.nom}</div>
