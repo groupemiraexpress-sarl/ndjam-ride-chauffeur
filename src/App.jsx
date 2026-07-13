@@ -497,6 +497,138 @@ function EcranFelicitations({ nom, onContinuer }) {
   );
 }
 
+/* ===================== MES COURSES (historique) ===================== */
+/* Affiche au chauffeur les courses et colis qu'il a menés à bien, avec sa
+   part réelle : le prix payé par le client moins la commission Mira Express. */
+function MesCourses({ profil, onRetour }) {
+  const [courses, setCourses] = useState([]);
+  const [colis, setColis] = useState([]);
+  const [tarifs, setTarifs] = useState({ commission_course: 12, commission_colis: 15 });
+  const [chargement, setChargement] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      if (!profil?.nom) { setChargement(false); return; }
+      const [coRes, clRes, tfRes] = await Promise.all([
+        supabase.from("courses").select("*")
+          .eq("chauffeur_nom", profil.nom).eq("statut", "terminee")
+          .order("cree_le", { ascending: false }).limit(50),
+        supabase.from("colis").select("*")
+          .eq("chauffeur_nom", profil.nom).eq("statut", "livre")
+          .order("cree_le", { ascending: false }).limit(50),
+        supabase.from("tarifs").select("commission_course, commission_colis").eq("id", 1).maybeSingle(),
+      ]);
+      setCourses(coRes.data || []);
+      setColis(clRes.data || []);
+      if (tfRes.data) setTarifs(tfRes.data);
+      setChargement(false);
+    })();
+  }, [profil]);
+
+  const comCourse = parseFloat(tarifs.commission_course) || 0;
+  const comColis = parseFloat(tarifs.commission_colis) || 0;
+
+  // Part du chauffeur = prix payé par le client - commission de la plateforme
+  const partCourse = (prix) => Math.round((prix || 0) * (100 - comCourse) / 100);
+  const partColis = (prix) => Math.round((prix || 0) * (100 - comColis) / 100);
+
+  const gainCourses = courses.reduce((s, c) => s + partCourse(c.prix_fcfa), 0);
+  const gainColis = colis.reduce((s, c) => s + partColis(c.prix_fcfa), 0);
+  const gainTotal = gainCourses + gainColis;
+  const nbTotal = courses.length + colis.length;
+
+  function dateCourte(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
+      + " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  if (chargement) {
+    return (
+      <div className="chauffeur-body">
+        <div className="hist-titre">Mes courses</div>
+        <div className="aucune-course">Chargement…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="chauffeur-body">
+      <button className="hist-retour" onClick={onRetour}>← Retour</button>
+
+      <div className="hist-titre">Mes courses</div>
+
+      {/* Résumé des gains */}
+      <div className="hist-resume">
+        <div className="hist-resume-bloc">
+          <div className="hist-resume-val">{gainTotal.toLocaleString("fr-FR")} F</div>
+          <div className="hist-resume-lib">Total gagné</div>
+        </div>
+        <div className="hist-resume-bloc">
+          <div className="hist-resume-val">{nbTotal}</div>
+          <div className="hist-resume-lib">Missions</div>
+        </div>
+      </div>
+
+      <div className="hist-note">
+        Les montants affichés sont votre part, après la commission Mira Express
+        ({comCourse}% sur les courses, {comColis}% sur les colis).
+      </div>
+
+      {nbTotal === 0 ? (
+        <div className="aucune-course">
+          Vous n'avez pas encore de course terminée.<br />
+          Passez en ligne pour recevoir des demandes.
+        </div>
+      ) : (
+        <>
+          {courses.length > 0 && (
+            <>
+              <div className="hist-section">🚗 Courses ({courses.length})</div>
+              {courses.map((c) => (
+                <div key={c.id} className="hist-item">
+                  <div className="hist-item-haut">
+                    <div className="hist-gain">{partCourse(c.prix_fcfa).toLocaleString("fr-FR")} F</div>
+                    <div className="hist-date">{dateCourte(c.cree_le)}</div>
+                  </div>
+                  <div className="hist-meta">
+                    Client a payé {(c.prix_fcfa || 0).toLocaleString("fr-FR")} F
+                    {c.distance_km ? ` · ${c.distance_km} km` : ""}
+                  </div>
+                  {c.note && (
+                    <div className="hist-note-client">
+                      {"⭐".repeat(c.note)} {c.tags ? "· " + c.tags : ""}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+
+          {colis.length > 0 && (
+            <>
+              <div className="hist-section">📦 Colis livrés ({colis.length})</div>
+              {colis.map((c) => (
+                <div key={c.id} className="hist-item" style={{ borderLeftColor: "#FECB00" }}>
+                  <div className="hist-item-haut">
+                    <div className="hist-gain">{partColis(c.prix_fcfa).toLocaleString("fr-FR")} F</div>
+                    <div className="hist-date">{dateCourte(c.cree_le)}</div>
+                  </div>
+                  <div className="hist-meta">
+                    Client a payé {(c.prix_fcfa || 0).toLocaleString("fr-FR")} F
+                    {c.distance_km ? ` · ${c.distance_km} km` : ""} · Colis {c.taille}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ===================== APP PRINCIPALE ===================== */
 export default function App() {
   const [session, setSession] = useState(null);
@@ -508,6 +640,7 @@ export default function App() {
   const [codeSaisi, setCodeSaisi] = useState("");
   const [erreurCode, setErreurCode] = useState(null);
   const [modeRecuperation, setModeRecuperation] = useState(false);
+  const [voirHistorique, setVoirHistorique] = useState(false);
 
   const [courses, setCourses] = useState([]);
   const [colis, setColis] = useState([]);
@@ -586,6 +719,56 @@ export default function App() {
     if (!session) return;
     rechargerProfil();
   }, [session]);
+
+// REPRISE DE MISSION : au démarrage uniquement (ou après un rechargement de
+  // page), on retrouve dans la base la course ou le colis encore en cours pour
+  // ce chauffeur, et on le restaure. Le verrou "repriseFaite" garantit que cet
+  // effet ne s'exécute qu'UNE SEULE FOIS : sans lui, il se redéclencherait
+  // après chaque acceptation et entrerait en conflit avec la carte Leaflet
+  // (erreur "removeChild", écran noir).
+  const repriseFaite = useRef(false);
+  useEffect(() => {
+    if (repriseFaite.current) return;          // déjà fait : on ne refait rien
+    if (!session || !profil || !profil.nom) return;
+    repriseFaite.current = true;               // on verrouille tout de suite
+
+    let annule = false;
+    (async () => {
+      // 1) Une course encore acceptée ?
+      const { data: courses } = await supabase
+        .from("courses").select("*")
+        .eq("chauffeur_nom", profil.nom)
+        .eq("statut", "acceptee")
+        .order("cree_le", { ascending: false })
+        .limit(1);
+
+      if (annule) return;
+      if (courses && courses.length > 0) {
+        setCourseActive(courses[0]);
+        return; // une seule mission à la fois
+      }
+
+      // 2) Sinon, un colis encore accepté ?
+      const { data: colisEnCours } = await supabase
+        .from("colis").select("*")
+        .eq("chauffeur_nom", profil.nom)
+        .eq("statut", "acceptee")
+        .order("cree_le", { ascending: false })
+        .limit(1);
+
+      if (annule) return;
+      if (colisEnCours && colisEnCours.length > 0) {
+        const c = colisEnCours[0];
+        setColisActif(c);
+        // On restaure aussi la phase : si le colis est déjà récupéré,
+        // le chauffeur est en train de le livrer.
+        setColisPhase(c.recupere ? "livraison" : "ramassage");
+      }
+    })();
+
+    return () => { annule = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, profil]);
 
   async function seLibererManuellement() {
     if (!session) return;
@@ -814,7 +997,7 @@ export default function App() {
     if (!error) {
       // BRIQUE 5 : se marquer occupé pour ne plus être ciblé par d'autres courses
       await supabase.from("chauffeurs").update({ en_course: true }).eq("user_id", session.user.id);
-      setCourseActive(course); setAnnuleParClient(null); setCodeSaisi(""); setErreurCode(null); chargerCourses();
+      setCourseActive(course); setAnnuleParClient(null); setCodeSaisi(""); setErreurCode(null);
     }
   }
 
@@ -848,7 +1031,7 @@ export default function App() {
       .eq("id", c.id);
     if (!error) {
       await supabase.from("chauffeurs").update({ en_course: true }).eq("user_id", session.user.id);
-      setColisActif(c); chargerColis(); chargerCourses();
+      setColisActif(c); setColisPhase("ramassage");
     }
   }
 
@@ -882,9 +1065,8 @@ export default function App() {
     }
     // BRIQUE 5 : redevenir disponible
     if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
-    setCourseActive(null);
     fermerChat();
-    chargerCourses();
+    setCourseActive(null);
   }
 
   async function annulerChauffeur(motif) {
@@ -894,10 +1076,9 @@ export default function App() {
       .eq("id", courseActive.id);
     // BRIQUE 5 : redevenir disponible
     if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
-    setCourseActive(null);
-    setShowMotifs(false);
     fermerChat();
-    chargerCourses();
+    setShowMotifs(false);
+    setCourseActive(null);
   }
 
   useEffect(() => {
@@ -1036,11 +1217,9 @@ export default function App() {
     }
     await supabase.from("colis").update({ statut: "livre", livre: true, recupere: true }).eq("id", colisActif.id);
     if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
-    setColisActif(null);
-    setColisPhase("ramassage");
     setCodeColis("");
-    chargerColis();
-    chargerCourses();
+    setColisPhase("ramassage");
+    setColisActif(null);
   }
 
   // Annuler la mission colis
@@ -1054,9 +1233,8 @@ export default function App() {
       chauffeurs_refuses: refuses.join(","),
     }).eq("id", colisActif.id);
     if (session) await supabase.from("chauffeurs").update({ en_course: false }).eq("user_id", session.user.id);
-    setColisActif(null);
     setColisPhase("ramassage");
-    chargerColis();
+    setColisActif(null);
   }
 
 
@@ -1093,7 +1271,8 @@ export default function App() {
         <div id="header">
           <div id="logo-badge"></div>
           <h1>Mira<span> Express</span><small>Mon profil</small></h1>
-          <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
+          <button onClick={() => setVoirHistorique(true)} style={btnProfil}>📋 Mes courses</button>
+        <button onClick={() => setPageProfil(true)} style={btnProfil}>Profil</button>
         </div>
         <div style={{ position: "absolute", top: 62, left: 0, right: 0, bottom: 0, overflowY: "auto", background: "#f3f4f6" }}>
           <MonProfil
@@ -1250,8 +1429,11 @@ export default function App() {
           <div className="carte-chauffeur">
             <MapContainer center={maPosition || depart || NDJAMENA} zoom={14} style={{ height: "100%", width: "100%" }} zoomControl={false}>
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
-              <Marker position={depart} icon={icone("#002664")} />
-              <Marker position={dest} icon={icone("#C60C30")} />
+              {/* Protection : on ne rend les marqueurs que si les points existent.
+                  Sans cette vérification, Leaflet reçoit position={null} au premier
+                  rendu et plante (erreur removeChild, écran noir). */}
+              {depart && <Marker position={depart} icon={icone("#002664")} />}
+              {dest && <Marker position={dest} icon={icone("#C60C30")} />}
               {maPosition && <Marker position={maPosition} icon={iconeVoiture(couleurVers(profil?.couleur))} />}
               {routeTrace ? (
                 <>
@@ -1259,7 +1441,9 @@ export default function App() {
                   <Polyline positions={routeTrace} pathOptions={{ color: "#16a34a", weight: 5 }} />
                 </>
               ) : (
-                <Polyline positions={[depart, dest]} pathOptions={{ color: "#FECB00", weight: 4, dashArray: "2,8" }} />
+                depart && dest && (
+                  <Polyline positions={[depart, dest]} pathOptions={{ color: "#FECB00", weight: 4, dashArray: "2,8" }} />
+                )
               )}
               <AjusterVue points={[maPosition, depart, dest]} />
             </MapContainer>

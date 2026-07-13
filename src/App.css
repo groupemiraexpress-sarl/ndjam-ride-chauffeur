@@ -230,3 +230,55 @@ body{
   margin-bottom: 18px;
   text-align: center;
 }
+
+/* ===================== HISTORIQUE DES COURSES ===================== */
+.hist-retour {
+  background: #fff; border: none; border-radius: 10px;
+  padding: 9px 14px; font-size: 13px; font-weight: 700;
+  color: #002664; cursor: pointer; margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.hist-titre {
+  font-size: 20px; font-weight: 800; color: #0d1117; margin-bottom: 14px;
+}
+.hist-resume {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;
+}
+.hist-resume-bloc {
+  background: linear-gradient(135deg, #002664, #003a96);
+  border-radius: 14px; padding: 16px; text-align: center;
+}
+.hist-resume-val {
+  font-size: 22px; font-weight: 800; color: #FECB00;
+}
+.hist-resume-lib {
+  font-size: 11px; color: rgba(255,255,255,.8); margin-top: 3px; font-weight: 600;
+}
+.hist-note {
+  background: #fffbe9; border-left: 3px solid #FECB00;
+  border-radius: 8px; padding: 10px 12px;
+  font-size: 12px; color: #6b7280; line-height: 1.5; margin-bottom: 16px;
+}
+.hist-section {
+  font-size: 14px; font-weight: 800; color: #002664; margin: 16px 0 10px;
+}
+.hist-item {
+  background: #fff; border-radius: 12px; padding: 13px 15px;
+  margin-bottom: 9px; border-left: 4px solid #16a34a;
+  box-shadow: 0 2px 6px rgba(0,0,0,.05);
+}
+.hist-item-haut {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.hist-gain {
+  font-size: 18px; font-weight: 800; color: #16a34a;
+}
+.hist-date {
+  font-size: 11px; color: #9ca3af; font-weight: 600;
+}
+.hist-meta {
+  font-size: 12px; color: #6b7280; margin-top: 4px;
+}
+.hist-note-client {
+  font-size: 12px; color: #f59e0b; margin-top: 5px; font-weight: 600;
+}
