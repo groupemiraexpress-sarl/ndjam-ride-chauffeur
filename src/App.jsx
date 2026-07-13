@@ -641,6 +641,7 @@ export default function App() {
   const [erreurCode, setErreurCode] = useState(null);
   const [modeRecuperation, setModeRecuperation] = useState(false);
   const [voirHistorique, setVoirHistorique] = useState(false);
+  const [menuOuvert, setMenuOuvert] = useState(false);
 
   const [courses, setCourses] = useState([]);
   const [colis, setColis] = useState([]);
@@ -1350,9 +1351,8 @@ export default function App() {
       <div id="header" style={{ minHeight: "92px", display: "flex", alignItems: "center", position: "absolute", top: 0, left: 0, right: 0, zIndex: 1000, background: "#0d1117" }}>
         <div id="logo-badge"></div>
         <h1>Mira<span> Express</span><small>Mode Chauffeur</small></h1>
-        <button onClick={() => setVoirHistorique(true)} style={{ ...btnDeco, marginLeft: "auto", marginRight: 6 }}>📋 Mes courses</button>
-        <button onClick={() => setEditionProfil(true)} style={{ ...btnDeco, marginRight: 6 }}>Profil</button>
-        <button onClick={deconnexion} style={btnDeco}>Déconnexion</button>
+        <button onClick={() => setMenuOuvert(true)} aria-label="Menu"
+          style={{ ...btnDeco, marginLeft: "auto", fontSize: "18px", padding: "6px 13px", lineHeight: 1 }}>☰</button>
       </div>
 
       {voirHistorique ? (
@@ -1683,9 +1683,50 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {menuOuvert && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "#fff", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: "#0d1117", color: "#fff" }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "15px" }}>{profil?.nom}</div>
+              <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "2px" }}>{profil?.vehicule}{profil?.plaque ? " · " + profil.plaque : ""}</div>
+            </div>
+            <button onClick={() => setMenuOuvert(false)} aria-label="Fermer"
+              style={{ background: "none", border: "none", color: "#fff", fontSize: "26px", cursor: "pointer", lineHeight: 1 }}>✕</button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", background: "#f3f4f6", padding: "10px" }}>
+            <div style={{ background: "#fff", borderRadius: "14px", overflow: "hidden" }}>
+              <button onClick={() => { setVoirHistorique(true); setMenuOuvert(false); }} style={menuLigne}>
+                <span style={{ fontSize: "18px", marginRight: "12px" }}>📋</span>
+                <span style={{ flex: 1 }}>Mes courses</span>
+                <span style={{ color: "#9ca3af" }}>›</span>
+              </button>
+              <button onClick={() => { setEditionProfil(true); setMenuOuvert(false); }} style={{ ...menuLigne, borderBottom: "none" }}>
+                <span style={{ fontSize: "18px", marginRight: "12px" }}>👤</span>
+                <span style={{ flex: 1 }}>Profil</span>
+                <span style={{ color: "#9ca3af" }}>›</span>
+              </button>
+            </div>
+          </div>
+
+          <div style={{ padding: "14px 16px", background: "#fff", borderTop: "1px solid #e5e7eb" }}>
+            <button onClick={deconnexion}
+              style={{ width: "100%", border: "none", borderRadius: "11px", background: "#e5e7eb", color: "#6b7280", fontWeight: 700, padding: "13px", cursor: "pointer", fontSize: "15px" }}>
+              Déconnexion
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const menuLigne = {
+  display: "flex", alignItems: "center", width: "100%", padding: "15px 16px",
+  border: "none", borderBottom: "1px solid #f3f4f6", background: "#fff",
+  fontSize: "15px", fontWeight: 600, color: "#0d1117", cursor: "pointer", textAlign: "left",
+};
 
 const btnDeco = {
   background: "rgba(255,255,255,.15)", border: "none", color: "#fff",
