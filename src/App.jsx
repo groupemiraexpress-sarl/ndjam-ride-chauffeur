@@ -1682,7 +1682,7 @@ export default function App() {
 
       {chatOuvert && (
         <div style={{ position: "absolute", inset: 0, zIndex: 1000, background: "#fff", display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", paddingTop: "calc(14px + env(safe-area-inset-top))", borderBottom: "1px solid #e5e7eb", background: "#002664", color: "#fff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", paddingTop: "max(50px, calc(14px + env(safe-area-inset-top)))", borderBottom: "1px solid #e5e7eb", background: "#002664", color: "#fff" }}>
             <button onClick={() => window.history.back()} style={{ background: "none", border: "none", color: "#fff", fontSize: "22px", cursor: "pointer" }}>←</button>
             <div>
               <div style={{ fontWeight: 700 }}>Client</div>
@@ -1729,13 +1729,13 @@ export default function App() {
 
       {menuOuvert && (
         <div style={{ position: "absolute", inset: 0, zIndex: 1200, background: "#fff", display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", paddingTop: "calc(16px + env(safe-area-inset-top))", background: "#0d1117", color: "#fff" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", paddingTop: "max(52px, calc(12px + env(safe-area-inset-top)))", background: "#0d1117", color: "#fff" }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: "15px" }}>{profil?.nom}</div>
-              <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "2px" }}>{profil?.vehicule}{profil?.plaque ? " · " + profil.plaque : ""}</div>
+              <div style={{ fontWeight: 700, fontSize: "13px" }}>{profil?.nom}</div>
+              <div style={{ fontSize: "11px", opacity: 0.7, marginTop: "2px" }}>{profil?.vehicule}{profil?.plaque ? " · " + profil.plaque : ""}</div>
             </div>
             <button onClick={() => window.history.back()} aria-label="Fermer"
-              style={{ background: "none", border: "none", color: "#fff", fontSize: "26px", cursor: "pointer", lineHeight: 1 }}>✕</button>
+              style={{ background: "none", border: "none", color: "#fff", fontSize: "22px", cursor: "pointer", lineHeight: 1 }}>✕</button>
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", background: "#f3f4f6", padding: "10px" }}>

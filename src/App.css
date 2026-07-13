@@ -290,7 +290,7 @@ body{
    haut avec l'espace réel que le téléphone réserve (0 sur les appareils sans
    encoche, donc aucun effet sur les anciens modèles ou sur Android classique). */
 #header{
-  padding-top: calc(14px + env(safe-area-inset-top));
+  padding-top: max(50px, calc(14px + env(safe-area-inset-top)));
 }
 .chauffeur-body{
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
