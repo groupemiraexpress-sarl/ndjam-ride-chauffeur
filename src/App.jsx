@@ -1253,6 +1253,31 @@ export default function App() {
     return () => { annule = true; };
   }, [courseActive, maPosition]);
 
+  // BOUTON RETOUR (téléphone/navigateur) : sans ceci, ouvrir le menu, Mes
+  // courses, le profil ou le chat ne crée aucune entrée d'historique — donc
+  // le retour ne "défait" rien pas à pas, il recharge directement sur l'écran
+  // de base (la carte de la course en cours). On ajoute une entrée à
+  // l'ouverture d'un écran secondaire, et le retour referme l'écran actif.
+  const ecranOuvertRef = useRef(false);
+  useEffect(() => {
+    const ouvert = chatOuvert || menuOuvert || voirHistorique || editionProfil;
+    if (ouvert && !ecranOuvertRef.current) {
+      window.history.pushState({ miraEcran: true }, "");
+    }
+    ecranOuvertRef.current = ouvert;
+  }, [chatOuvert, menuOuvert, voirHistorique, editionProfil]);
+
+  useEffect(() => {
+    function auRetour() {
+      if (chatOuvert) { fermerChat(); return; }
+      if (menuOuvert) { setMenuOuvert(false); return; }
+      if (voirHistorique) { setVoirHistorique(false); return; }
+      if (editionProfil) { setEditionProfil(false); return; }
+    }
+    window.addEventListener("popstate", auRetour);
+    return () => window.removeEventListener("popstate", auRetour);
+  }, [chatOuvert, menuOuvert, voirHistorique, editionProfil]);
+
   if (!authPrete) {
     return <div id="app" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "#002664" }}><div style={{ color: "#fff" }}>Chargement...</div></div>;
   }
@@ -1278,8 +1303,8 @@ export default function App() {
           <MonProfil
             userId={session.user.id}
             profilExistant={profilComplet(profil) ? profil : (profil || null)}
-            onEnregistre={async () => { await rechargerProfil(); setEditionProfil(false); }}
-            onAnnuler={profilComplet(profil) ? () => setEditionProfil(false) : null}
+            onEnregistre={async () => { await rechargerProfil(); if (editionProfil) window.history.back(); else setEditionProfil(false); }}
+            onAnnuler={profilComplet(profil) ? () => window.history.back() : null}
           />
         </div>
       </div>
@@ -1357,7 +1382,7 @@ export default function App() {
 
       {voirHistorique ? (
         <div style={{ position: "absolute", top: "92px", left: 0, right: 0, bottom: 0, overflowY: "auto", background: "#f3f4f6" }}>
-          <MesCourses profil={profil} onRetour={() => setVoirHistorique(false)} />
+          <MesCourses profil={profil} onRetour={() => window.history.back()} />
         </div>
       ) : colisActif ? (
         <div className="chauffeur-active-wrap" style={{ position: "absolute", top: "100px", left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column" }}>
@@ -1470,9 +1495,21 @@ export default function App() {
                   style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", padding: "12px", marginTop: "8px", marginBottom: "8px", borderRadius: "12px", textDecoration: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: "15px" }}>
                   🧭 Naviguer vers le client
                 </a>
+                {courseActive.client_tel && (
+                  <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+                    <a href={"tel:" + courseActive.client_tel}
+                      style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px", borderRadius: "12px", textDecoration: "none", background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: "14px" }}>
+                      📞 Appeler
+                    </a>
+                    <a href={`https://wa.me/${(courseActive.client_tel || "").replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer"
+                      style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px", borderRadius: "12px", textDecoration: "none", background: "#25D366", color: "#fff", fontWeight: 700, fontSize: "14px" }}>
+                      💬 WhatsApp
+                    </a>
+                  </div>
+                )}
                 <button onClick={() => setChatOuvert(true)}
                   style={{ width: "100%", padding: "12px", marginBottom: "8px", borderRadius: "12px", border: "none", cursor: "pointer", background: "#002664", color: "#fff", fontWeight: 700, fontSize: "15px" }}>
-                  💬 Discussion
+                  💬 Discussion (messages dans l'app)
                 </button>
 
                 {!courseActive.demarree ? (
@@ -1640,7 +1677,7 @@ export default function App() {
       {chatOuvert && (
         <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#fff", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 16px", borderBottom: "1px solid #e5e7eb", background: "#002664", color: "#fff" }}>
-            <button onClick={fermerChat} style={{ background: "none", border: "none", color: "#fff", fontSize: "22px", cursor: "pointer" }}>←</button>
+            <button onClick={() => window.history.back()} style={{ background: "none", border: "none", color: "#fff", fontSize: "22px", cursor: "pointer" }}>←</button>
             <div>
               <div style={{ fontWeight: 700 }}>Client</div>
               <div style={{ fontSize: "12px", opacity: 0.8 }}>
@@ -1691,7 +1728,7 @@ export default function App() {
               <div style={{ fontWeight: 700, fontSize: "15px" }}>{profil?.nom}</div>
               <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "2px" }}>{profil?.vehicule}{profil?.plaque ? " · " + profil.plaque : ""}</div>
             </div>
-            <button onClick={() => setMenuOuvert(false)} aria-label="Fermer"
+            <button onClick={() => window.history.back()} aria-label="Fermer"
               style={{ background: "none", border: "none", color: "#fff", fontSize: "26px", cursor: "pointer", lineHeight: 1 }}>✕</button>
           </div>
 
